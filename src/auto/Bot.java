@@ -10,6 +10,11 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 
+
+import static haven.Inventory.*;
+import static haven.OCache.*;
+
+
 public class Bot implements Defer.Callable<Void> {
     private static final Object lock = new Object();
     private static Bot current;
@@ -65,7 +70,7 @@ public class Bot implements Defer.Callable<Void> {
 	}
     }
     
-    private static void start(Bot bot, UI ui) {
+    public static void start(Bot bot, UI ui) {
 	cancel();
 	synchronized (lock) { current = bot; }
 	bot.run((result) -> {
@@ -146,6 +151,194 @@ public class Bot implements Defer.Callable<Void> {
 	if(!targets.isEmpty()) {
 	    start(new Bot(targets, fuelWith(gui, fuel, count)), gui.ui);
 	}
+    }
+    
+    public static void spitroast(GameUI gui) {
+	List<Target> targets = getNearestTargets(gui, "terobjs/pow", 1);
+	
+	gui.ui.message(String.format("Found Spitroast %i", !targets.isEmpty()), GameUI.MsgType.INFO);
+	
+	if(!targets.isEmpty()) {
+	    //start(new Bot(targets, fuelWith(gui, fuel, count)), gui.ui);
+	    start(new Bot(targets, Target::rclick, selectFlower("Take")), gui.ui);
+	}
+    }
+    public static BotAction test(GameUI gui, String seedname, List<Target> barrels) {
+	return target -> {
+	    Supplier<List<WItem>> inventory = INVENTORY(gui);
+	    float has = countItems(seedname, inventory);
+	    if(has >= 1) {
+		Optional<WItem> w = findFirstItem(seedname, inventory);
+		if(w.isPresent()) {
+		    w.get().take();
+		    if(!waitHeld(gui, seedname)) {
+			cancel();
+			return;
+		    }
+		    Thread.sleep(100);
+		    
+		    Coord whereToPlant = gui.map.player().rc.floor(OCache.posres);
+		    Coord mc = gui.ui.mc;
+		    gui.map.wdgmsg("itemact", Coord.z, whereToPlant, 0);
+		    //gui.ui.mousedown(whereToPlant,3);
+		    //gui.ui.mouseup(whereToPlant,3);
+		    //gui.ui.mousemove(mc);
+		    
+		    Thread.sleep(100);
+		    
+		    //place seed back in inv
+		    Coord c = gui.maininv.findPlaceFor(w.get().lsz);
+		    if(c != null) {
+			c = c.mul(sqsz).add(sqsz.div(2));
+			gui.maininv.drop(c, c);
+		    } else {
+			gui.ui.message("Non enough space!", GameUI.MsgType.BAD);
+		    }
+		    
+		} else {
+		    cancel();
+		    return;
+		}
+	    } else {
+		cancel();
+	    }
+	};
+    }
+    
+    
+    
+    public static BotAction replant(GameUI gui, String seedname, List<Target> barrels) {
+	return target -> {
+	    try {
+		if(target.gob.getgrowthstage() != 1)
+		    return;
+		
+		FlowerMenu.lastTarget(target);
+		Reactor.FLOWER.first().subscribe(flowerMenu -> {
+		    Reactor.FLOWER_CHOICE.first().subscribe(choice -> unpause());
+		    flowerMenu.forceChoose("Harvest");
+		});
+		target.rclick();
+		try {
+		    target.gob.waitRemoval();
+		}
+		catch (InterruptedException ignored) {}
+		
+		Supplier<List<WItem>> inventory = INVENTORY(gui);
+		float has = 0;
+		int retries = 20;
+		while (retries > 0) {
+		    has = countItems(seedname, inventory);
+		    if(has > 1)
+			break;
+		    
+		    Thread.sleep(25);
+		    retries--;
+		}
+		if(has >= 1) {
+		    Optional<WItem> w = findFirstItem(seedname, inventory);
+		    if(w.isPresent()) {
+			w.get().take();
+			if(!waitHeld(gui, seedname)) {
+			    gui.ui.message("Could not take seeds from inv 1", GameUI.MsgType.BAD);
+			    cancel();
+			    return;
+			}
+			
+			Supplier<List<WItem>> hands = HANDS(gui);
+			float hasInHandsBeforePlanting = countItems(seedname, hands);
+			
+			if (false) {
+			    Coord whereToPlant = gui.map.player().rc.floor(OCache.posres);
+			    Coord mc = gui.ui.mc;
+			    gui.map.wdgmsg("itemact", Coord.z, whereToPlant, 0);
+			    
+			    retries = 20;
+			    while (retries > 0) {
+				if(hasInHandsBeforePlanting > countItems(seedname, hands))
+				    break;
+				
+				Thread.sleep(25);
+				retries--;
+			    }
+			}
+			//place seed back in inv
+			Coord c = gui.maininv.findPlaceFor(w.get().lsz);
+			if(c != null) {
+			    c = c.mul(sqsz).add(sqsz.div(2));
+			    gui.maininv.drop(c, c);
+			} else {
+			    gui.ui.message("Non enough space!", GameUI.MsgType.BAD);
+			}
+			
+		    } else {
+			gui.ui.message("Could not take seeds from inv 2", GameUI.MsgType.BAD);
+			cancel();
+			return;
+		    }
+		} else {
+		    gui.ui.message("Did not find seeds in inv", GameUI.MsgType.BAD);
+		    cancel();
+		    return;
+		}
+		
+		// Empty inventory
+		if(has > 1300) {
+		    Optional<WItem> w = findFirstItem(seedname, inventory);
+		    if(w.isPresent()) {
+			w.get().take();
+			if(!waitHeld(gui, seedname)) {
+			    gui.ui.message("Did not find seeds in inv 2", GameUI.MsgType.BAD);
+			    cancel();
+			    return;
+			}
+		    }
+		    
+		    while (!barrels.isEmpty()) {
+			barrels.get(0).gob.itemact(UI.MOD_SHIFT | UI.MOD_CTRL);
+			Thread.sleep(5000);
+			if(!waitHeld(gui, null)) {
+			    barrels.remove(0);
+			} else {
+			    break;
+			}
+		    }
+		    
+		    if(barrels.isEmpty()) {
+			gui.ui.message("Ran out of barrels", GameUI.MsgType.BAD);
+			cancel();
+			return;
+		    }
+		    
+		}
+	    }
+	    catch (Exception ignored){
+		int i = 0;
+		i++;
+	    }
+	};
+    }
+    
+    public static void farmTurnip(GameUI gui) {
+	List<Target> targets = getUnsortedNearestTargets(gui, "terobjs/plants/turnip", 10000, 500);
+	
+	List<Target> barrels = getNearestTargets(gui, "terobjs/barrel", 5);
+	
+	gui.ui.message("Found barrels" + barrels.stream().count(), GameUI.MsgType.INFO);
+	
+	if(!targets.isEmpty()) {
+	    start(new Bot(targets, replant(gui, "Turnip", barrels)), gui.ui);
+	}
+    }
+    private static List<Target> getUnsortedNearestTargets(GameUI gui, String name, int limit, int radius) {
+	return gui.ui.sess.glob.oc.stream()
+	    .filter(gobIs(name))
+	    .filter(gob -> distanceToPlayer(gob) <= radius)
+	    .sorted(byDistance)
+	    .limit(limit)
+	    .sorted(byY)
+	    .map(Target::new)
+	    .collect(Collectors.toList());
     }
     
     private static List<Target> getNearestTargets(GameUI gui, String name, int limit) {
@@ -350,6 +543,13 @@ public class Bot implements Defer.Callable<Void> {
 	return Long.compare(o1.id, o2.id);
     };
     
+    public static Comparator<Gob> byY = (o1, o2) -> {
+	try {
+	    return Double.compare(o2.rc.y, o1.rc.y);
+	} catch (Exception ignored) {}
+	return Long.compare(o1.id, o2.id);
+    };
+    
     private static BotAction selectFlower(String... options) {
 	return target -> {
 	    if(target.hasMenu()) {
@@ -376,7 +576,7 @@ public class Bot implements Defer.Callable<Void> {
 	return gob -> gob.is(tag);
     }
     
-    private interface BotAction {
+    public interface BotAction {
 	void call(Target target) throws InterruptedException;
     }
     
@@ -397,6 +597,13 @@ public class Bot implements Defer.Callable<Void> {
 	public void rclick() {
 	    if(!disposed()) {
 		if(gob != null) {gob.rclick();}
+		if(item != null) {item.rclick();}
+	    }
+	}
+	
+	public void shiftrclick() {
+	    if(!disposed()) {
+		if(gob != null) {gob.rclick(UI.MOD_SHIFT);}
 		if(item != null) {item.rclick();}
 	    }
 	}

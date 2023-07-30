@@ -1,5 +1,6 @@
 package haven;
 
+import auto.BearScoutBot;
 import auto.Bot;
 
 public enum Action {
@@ -45,6 +46,9 @@ public enum Action {
     FUEL_SMELTER_9(gui -> Bot.fuelGob(gui, "terobjs/smelter", "Coal", 9)),
     FUEL_SMELTER_12(gui -> Bot.fuelGob(gui, "terobjs/smelter", "Coal", 12)),
     FUEL_OVEN_4(gui -> Bot.fuelGob(gui, "terobjs/oven", "Branch", 4)),
+    SPITROAST(gui -> Bot.spitroast(gui)),
+    FARMTURNIP(gui -> Bot.farmTurnip(gui)),
+    STARTSCOUTFORBEAR(gui -> BearScoutBot.Start(gui)),
     
     CLEAR_PLAYER_DAMAGE(GobDamageInfo::clearPlayerDamage, "Clear damage from player"),
     CLEAR_ALL_DAMAGE(GobDamageInfo::clearAllDamage, "Clear damage from everyone");

@@ -584,12 +584,43 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 	} catch (Exception ignored) {}
     }
     
+    public void rclick(int modflags) {
+	try {
+	    UI ui = glob.sess.ui;
+	    MapView map = ui.gui.map;
+	    Coord mc = rc.floor(posres);
+	    map.click(this.rc, 3, ui.mc, mc, 3,modflags, 0, (int) id, mc, 0, -1);
+	} catch (Exception ignored) {}
+    }
+    
+    public int getgrowthstage() {
+	Drawable dr = drawable;
+	ResDrawable d = (dr instanceof ResDrawable) ? (ResDrawable) dr : null;
+	if(d != null) {
+	    Message data = d.sdt.clone();
+	    // TODO: Needs more work for trees
+	    //copied from: BufferedImage growth() {
+	    return data.uint8();
+	}
+	
+	return -1;
+    }
+    
     public void itemact() {
 	try {
 	    UI ui = glob.sess.ui;
 	    Coord mc = rc.floor(posres);
 	    MapView map = ui.gui.map;
 	    map.wdgmsg("itemact", ui.mc, mc, ui.modflags(), 0, (int)id, mc, 0, -1);
+	} catch (Exception ignored) {}
+    }
+    
+    public void itemact(int modflags) {
+	try {
+	    UI ui = glob.sess.ui;
+	    Coord mc = rc.floor(posres);
+	    MapView map = ui.gui.map;
+	    map.wdgmsg("itemact", ui.mc, mc, modflags, 0, (int)id, mc, 0, -1);
 	} catch (Exception ignored) {}
     }
     
@@ -1127,7 +1158,7 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
     }
     
     private boolean updateVisibility() {
-	if(anyOf(GobTag.TREE, GobTag.BUSH)) {
+	if(anyOf(GobTag.TREE, GobTag.BUSH, GobTag.WALL)) {
 	    Drawable d = drawable;
 	    Boolean needHide = CFG.HIDE_TREES.get();
 	    if(d != null && d.skipRender != needHide) {

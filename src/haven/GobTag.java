@@ -25,7 +25,9 @@ public enum GobTag {
     PLAYER, ME, FRIEND, FOE,
     KO, DEAD, EMPTY, READY, FULL,
     
-    MENU, PICKUP, HIDDEN;
+    MENU, PICKUP, HIDDEN,
+    
+    WALL;
     
     private static final String[] AGGRO = {
         "/bear", "/boar", "/troll", "/wolverine", "/badger", "/adder", "/wolf", "/walrus", "/lynx", "/rat/caverat", "/moose", 
@@ -40,7 +42,8 @@ public enum GobTag {
     };
     
     private static final String[] LIKE_HERB = {
-        "/precioussnowflake"
+        "/precioussnowflake",
+        "/turnip"
     };
     
     private static final String[] LIKE_CRITTER = {
@@ -140,7 +143,10 @@ public enum GobTag {
                 tags.add(GEM);
             } else if(name.endsWith("/wheelbarrow") || name.endsWith("/plow")) {
                 tags.add(PUSHED);
+            } else if(name.endsWith("/palisadeseg") || name.endsWith("/palisadecp") || name.endsWith("/palisadebiggate")) {
+                tags.add(WALL);
             }
+            
             if(ofType(name, VEHICLES)) {
                 tags.add(VEHICLE);
             }
