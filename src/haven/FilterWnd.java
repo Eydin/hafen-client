@@ -16,21 +16,21 @@ public class FilterWnd extends GameUI.Hidewnd {
 	    }
 	});
     
-	addtwdg(add(new IButton("gfx/hud/btn-help", "","-d","-h", () -> ItemFilter.showHelp(ui, ItemFilter.FILTER_HELP))));
+	addtwdg(new IButton("gfx/hud/btn-help", "","-d","-h", () -> ItemFilter.showHelp(ui, ItemFilter.FILTER_HELP)).settip("Help"));
 	
 	pack();
 	hide();
     }
     
     @Override
-    public boolean keydown(KeyEvent ev) {
-	if(ev.getKeyCode() == KeyEvent.VK_ESCAPE) {
+    public boolean keydown(KeyDownEvent ev) {
+	if(ev.code == KeyEvent.VK_ESCAPE) {
 	    if(input.text().length() > 0) {
 		input.settext("");
 		return true;
 	    }
 	}
-	return !ignoredKey(ev) && super.keydown(ev);
+	return !ignoredKey(ev.awt) && super.keydown(ev);
     }
     
     private static boolean ignoredKey(KeyEvent ev){

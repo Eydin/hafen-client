@@ -26,7 +26,10 @@
 
 package haven;
 
+import auto.Actions;
 import me.ender.Reflect;
+import me.ender.ui.ICraftParent;
+import me.ender.ui.ValueEntry;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -60,7 +63,7 @@ public class Makewindow extends Widget {
 	.add(Makewindow.class, wdg -> wdg)
 	.add(Glob.class, wdg -> wdg.ui.sess.glob)
 	.add(Session.class, wdg -> wdg.ui.sess);
-    public class Spec implements GSprite.Owner, ItemInfo.SpriteOwner {
+    public class Spec implements GSprite.Owner, ItemInfo.SpriteOwner, RandomSource {
 	public Indir<Resource> res;
 	public MessageBuf sdt;
 	public Tex num;
@@ -134,8 +137,6 @@ public class Makewindow extends Widget {
 	}
 	public Resource getres() {return(res.get());}
 	public <T> T context(Class<T> cl) {return(ctxr.context(cl, Makewindow.this));}
-	@Deprecated
-	public Glob glob() {return(ui.sess.glob);}
 
 	public List<ItemInfo> info() {
 	    if(info == null)
@@ -147,12 +148,17 @@ public class Makewindow extends Widget {
 
     public static final KeyBinding kb_make = KeyBinding.get("make/one", KeyMatch.forcode(java.awt.event.KeyEvent.VK_ENTER, 0));
     public static final KeyBinding kb_makeall = KeyBinding.get("make/all", KeyMatch.forcode(java.awt.event.KeyEvent.VK_ENTER, KeyMatch.C));
+    ValueEntry amount;
     public Makewindow(String rcpnm) {
 	int inputW = add(new Label("Input:"), new Coord(0, UI.scale(8))).sz.x;
 	int resultW = add(new Label("Result:"), new Coord(0, outy + UI.scale(8))).sz.x;
 	xoff = Math.max(inputW, resultW) + UI.scale(10);
-	add(new Button(UI.scale(85), "Craft"), UI.scale(new Coord(230, 75))).action(() -> wdgmsg("make", 0)).setgkey(kb_make);
-	add(new Button(UI.scale(85), "Craft All"), UI.scale(new Coord(325, 75))).action(() -> wdgmsg("make", 1)).setgkey(kb_makeall);
+	Coord pos = UI.scale(235, 75);
+	pos = add(new Button(UI.scale(65), "Craft"), pos).action(() -> wdgmsg("make", 0)).setgkey(kb_make).pos("ur").adds(5, 0);
+	pos = add(new Button(UI.scale(65), "Craft…"), pos).action(this::craftMultiple).setgkey(kb_makeall).pos("ur").adds(5, 1);
+	amount = add(new ValueEntry(UI.scale(30), this::craftMultiple), pos);
+	amount.clearOnFocus = true;
+	amount.update = this::amountChanged;
 	pack();
 	this.rcpnm = rcpnm;
     }
@@ -161,13 +167,13 @@ public class Makewindow extends Widget {
 	if(msg == "inpop") {
 	    List<Spec> inputs = new ArrayList<>();
 	    for(int i = 0; i < args.length;) {
-		int resid = (Integer)args[i++];
+		Indir<Resource> res = ui.sess.getresv(args[i++]);
 		Message sdt = (args[i] instanceof byte[]) ? new MessageBuf((byte[])args[i++]) : MessageBuf.nil;
-		int num = (Integer)args[i++];
+		int num = Utils.iv(args[i++]);
 		Object[] info = {};
 		if((i < args.length) && (args[i] instanceof Object[]))
 		    info = (Object[])args[i++];
-		inputs.add(new Spec(ui.sess.getres(resid), sdt, num, info));
+		inputs.add(new Spec(res, sdt, num, info));
 	    }
 	    ui.sess.glob.loader.defer(() -> {
 		    List<Input> wdgs = new ArrayList<>();
@@ -192,13 +198,13 @@ public class Makewindow extends Widget {
 	} else if(msg == "opop") {
 	    List<Spec> outputs = new ArrayList<Spec>();
 	    for(int i = 0; i < args.length;) {
-		int resid = (Integer)args[i++];
+		Indir<Resource> res = ui.sess.getresv(args[i++]);
 		Message sdt = (args[i] instanceof byte[]) ? new MessageBuf((byte[])args[i++]) : MessageBuf.nil;
-		int num = (Integer)args[i++];
+		int num = Utils.iv(args[i++]);
 		Object[] info = {};
 		if((i < args.length) && (args[i] instanceof Object[]))
 		    info = (Object[])args[i++];
-		outputs.add(new Spec(ui.sess.getres(resid), sdt, num, info));
+		outputs.add(new Spec(res, sdt, num, info));
 	    }
 	    ui.sess.glob.loader.defer(() -> {
 		    List<SpecWidget> wdgs = new ArrayList<>();
@@ -222,17 +228,17 @@ public class Makewindow extends Widget {
 	} else if(msg == "qmod") {
 	    List<Indir<Resource>> qmod = new ArrayList<Indir<Resource>>();
 	    for(Object arg : args)
-		qmod.add(ui.sess.getres((Integer)arg));
+		qmod.add(ui.sess.getresv(arg));
 	    this.qmod = qmod;
 	} else if(msg == "tool") {
-	    tools.add(ui.sess.getres((Integer)args[0]));
+	    tools.add(ui.sess.getresv(args[0]));
 	} else if(msg == "inprcps") {
-	    int idx = (Integer)args[0];
+	    int idx = Utils.iv(args[0]);
 	    List<MenuGrid.Pagina> rcps = new ArrayList<>();
 	    GameUI gui = getparent(GameUI.class);
 	    if((gui != null) && (gui.menu != null)) {
 		for(int a = 1; a < args.length; a++)
-		    rcps.add(gui.menu.paginafor(ui.sess.getres((Integer)args[a])));
+		    rcps.add(gui.menu.paginafor(ui.sess.getresv(args[a])));
 	    }
 	    inputs.get(idx).recipes(rcps);
 	} else {
@@ -280,7 +286,7 @@ public class Makewindow extends Widget {
 	    } else {
 		hoverstart = now;
 	    }
-	    if(now - hoverstart >= 1.0) {
+	    if(now - hoverstart < 1.0) {
 		if(stip == null) {
 		    BufferedImage tip = spec.shorttip();
 		    Tex tt = (tip == null) ? null : new TexI(tip);
@@ -314,14 +320,14 @@ public class Makewindow extends Widget {
 	    this.idx = idx;
 	}
 
-	public boolean mousedown(Coord c, int button) {
-	    if(button == 1) {
+	public boolean mousedown(MouseDownEvent ev) {
+	    if(ev.b == 1) {
 		if(rpag == null)
 		    Makewindow.this.wdgmsg("findrcps", idx);
-		this.cc = c;
+		this.cc = ev.c;
 		return(true);
 	    }
-	    return(super.mousedown(c, button));
+	    return(super.mousedown(ev));
 	}
 
 	public void tick(double dt) {
@@ -329,8 +335,12 @@ public class Makewindow extends Widget {
 	    if((cc != null) && (rpag != null)) {
 		if(!rpag.isEmpty()) {
 		    SListMenu.of(UI.scale(250, 120), rpag,
-				 pag -> pag.button().name(), pag ->pag.button().img(),
-				 pag -> pag.button().use(new MenuGrid.Interaction(1, ui.modflags())))
+				 pag -> pag.button().name(), pag -> pag.button().img(),
+			    pag -> {
+				pag.button().use(new MenuGrid.Interaction(1, ui.modflags()));
+				CraftDBWnd db = getparent(CraftDBWnd.class);
+				if(db != null) {db.select(pag, false);}
+			    })
 			.addat(this, cc.add(UI.scale(5, 5))).tick(dt);
 		}
 		cc = null;
@@ -436,27 +446,21 @@ public class Makewindow extends Widget {
 	Coord c;
 	if(!qmod.isEmpty()) {
 	    c = new Coord(qmx, qmy);
-	    try {
-		for(Indir<Resource> qm : qmod) {
-		    Tex t = qmicon(qm);
-		    Coord sz = t.sz();
-		    if(mc.isect(c, sz))
-			return(qm.get().flayer(Resource.tooltip).t);
-		    c = c.add(sz.x + UI.scale(1), 0);
-		}
-	    } catch(Loading l) {
+	    for(Indir<Resource> qm : qmod) {
+		Tex t = qmicon(qm);
+		Coord sz = t.sz();
+		if(mc.isect(c, sz))
+		    return(qm.get().flayer(Resource.tooltip).t);
+		c = c.add(sz.x + UI.scale(1), 0);
 	    }
 	}
 	if(!tools.isEmpty()) {
 	    c = new Coord(toolx, qmy);
-	    try {
-		for(Indir<Resource> tool : tools) {
-		    Coord tsz = qmicon(tool).sz();
-		    if(mc.isect(c, tsz))
-			return(tool.get().flayer(Resource.tooltip).t);
-		    c = c.add(tsz.x + UI.scale(1), 0);
-		}
-	    } catch(Loading l) {
+	    for(Indir<Resource> tool : tools) {
+		Coord tsz = qmicon(tool).sz();
+		if(mc.isect(c, tsz))
+		    return(tool.get().flayer(Resource.tooltip).t);
+		c = c.add(tsz.x + UI.scale(1), 0);
 	    }
 	}
 	return(super.tooltip(mc, prev));
@@ -506,6 +510,31 @@ public class Makewindow extends Widget {
 	public void propagate(List<ItemInfo> buf, Owner outer) {
 	    if(ItemInfo.find(MakePrep.class, buf) == null)
 		buf.add(new MakePrep(outer));
+	}
+    }
+    
+    @Override
+    protected void added() {
+	super.added();
+	Window wnd;
+	if((wnd = getparent(Window.class)) instanceof ICraftParent) {
+	    amount.value(((ICraftParent) wnd).getCraftAmount());
+	}
+    }
+
+    private void amountChanged() {
+	Window wnd;
+	if((wnd = getparent(Window.class)) instanceof ICraftParent) {
+	    ((ICraftParent) wnd).setCraftAmount(amount.value());
+	}
+    }
+    
+    private void craftMultiple() {
+	int count = amount.value();
+	if(count <= 0) {
+	    wdgmsg("make", 1);
+	} else {
+	    Actions.craftCount(this, count);
 	}
     }
 }

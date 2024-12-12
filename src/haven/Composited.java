@@ -162,12 +162,7 @@ public class Composited implements RenderTree.Node, EquipTarget {
 	    }
 
 	    public void added(RenderTree.Slot slot) {
-		float z = Model.this.z;
-		/* XXX: The depth-bias should not be necessary, but
-		 * without it Z-fighting between meshes appears to
-		 * occur for unclear reasons. GLSL variance due to
-		 * different... bone indices? */
-		slot.ostate(Pipe.Op.compose(mat, new States.DepthBias(-z, -z), order, (order.z2 == 0) ? null : (p -> p.put(Clickable.slot, null))));
+		slot.ostate(Pipe.Op.compose(mat, order, (order.z2 == 0) ? null : (p -> p.put(Clickable.slot, null))));
 		slot.lockstate();
 		slot.add(m);
 	    }
@@ -206,7 +201,7 @@ public class Composited implements RenderTree.Node, EquipTarget {
     private static final OwnerContext.ClassResolver<SpriteEqu> eqctxr = new OwnerContext.ClassResolver<SpriteEqu>()
 	.add(SpriteEqu.class, eq -> eq)
 	.add(Composited.class, eq -> eq.comp());
-    public class SpriteEqu extends Equ<Sprite> implements Sprite.Owner, Skeleton.HasPose {
+    public class SpriteEqu extends Equ<Sprite> implements Sprite.Owner, RandomSource {
 	private SpriteEqu(ED ed) {
 	    super(Sprite.create(eqowner, ed.res.res.get(), ed.res.sdt.clone()), ed);
 	}
@@ -225,16 +220,13 @@ public class Composited implements RenderTree.Node, EquipTarget {
 	    return(OwnerContext.orparent(cl, eqctxr.context(cl, this, false), eqowner));
 	}
 
+	@Deprecated
 	public Resource getres() {
 	    return(r.res);
 	}
 
 	public Random mkrandoom() {
 	    return((eqowner != null) ? eqowner.mkrandoom() : new Random());
-	}
-
-	public Pose getpose() {
-	    return(Skeleton.getpose(r));
 	}
 
 	public Composited comp() {
@@ -388,14 +380,14 @@ public class Composited implements RenderTree.Node, EquipTarget {
 
 	public static Desc decode(Session sess, Object[] args) {
 	    Desc ret = new Desc();
-	    ret.base = sess.getres((Integer)args[0]);
+	    ret.base = sess.getresv(args[0]);
 	    Object[] ma = (Object[])args[1];
 	    for(int i = 0; i < ma.length; i += 2) {
 		List<ResData> tex = new ArrayList<ResData>();
-		Indir<Resource> mod = sess.getres((Integer)ma[i]);
+		Indir<Resource> mod = sess.getresv(ma[i]);
 		Object[] ta = (Object[])ma[i + 1];
 		for(int o = 0; o < ta.length; o++) {
-		    Indir<Resource> tr = sess.getres((Integer)ta[o]);
+		    Indir<Resource> tr = sess.getresv(ta[o]);
 		    Message sdt = Message.nil;
 		    if((ta.length > o + 1) && (ta[o + 1] instanceof byte[]))
 			sdt = new MessageBuf((byte[])ta[++o]);
@@ -407,13 +399,13 @@ public class Composited implements RenderTree.Node, EquipTarget {
 	    for(int i = 0; i < ea.length; i++) {
 		Object[] qa = (Object[])ea[i];
 		int n = 0;
-		int t = (Integer)qa[n++];
+		int t = Utils.iv(qa[n++]);
 		String at = (String)qa[n++];
-		Indir<Resource> res = sess.getres((Integer)qa[n++]);
+		Indir<Resource> res = sess.getresv(qa[n++]);
 		Message sdt = Message.nil;
 		if(qa[n] instanceof byte[])
 		    sdt = new MessageBuf((byte[])qa[n++]);
-		Coord3f off = new Coord3f(((Number)qa[n + 0]).floatValue(), ((Number)qa[n + 1]).floatValue(), ((Number)qa[n + 2]).floatValue());
+		Coord3f off = new Coord3f(Utils.fv(qa[n + 0]), Utils.fv(qa[n + 1]), Utils.fv(qa[n + 2]));
 		ret.equ.add(new ED(t, at, new ResData(res, sdt), off));
 	    }
 	    return(ret);

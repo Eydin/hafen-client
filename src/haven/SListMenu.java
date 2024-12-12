@@ -36,6 +36,7 @@ public abstract class SListMenu<I, W extends Widget> extends Widget {
     public static final Tex bg = Window.bg;
     public static final IBox obox = Window.wbox;
     public final InnerList box;
+    public boolean grab = true;
     private UI.Grab mg, kg;
 
     protected abstract List<? extends I> items();
@@ -76,9 +77,9 @@ public abstract class SListMenu<I, W extends Widget> extends Widget {
 	    choice(item);
 	}
 
-	public void mousemove(Coord c) {
-	    super.mousemove(c);
-	    this.mc = c;
+	public void mousemove(MouseMoveEvent ev) {
+	    super.mousemove(ev);
+	    this.mc = ev.c;
 	}
 
 	protected void drawbg(GOut g, I item, int idx, Area area) {
@@ -127,39 +128,52 @@ public abstract class SListMenu<I, W extends Widget> extends Widget {
 	super.draw(g);
     }
 
-    public boolean mousedown(Coord c, int button) {
-	if(!c.isect(Coord.z, sz)) {
+    public boolean mousedown(MouseDownEvent ev) {
+	if(!ev.c.isect(Coord.z, sz)) {
 	    choice(null);
+	    return(true);
 	} else {
-	    super.mousedown(c, button);
+	    return(super.mousedown(ev));
 	}
-	return(true);
     }
 
-    public boolean keydown(java.awt.event.KeyEvent ev) {
+    public boolean handle(Event ev) {
+	if((ev instanceof PointerEvent) && checkhit(((PointerEvent)ev).c)) {
+	    super.handle(ev);
+	    ev.propagate(this);
+	    return(true);
+	}
+	return(super.handle(ev));
+    }
+
+    public boolean keydown(KeyDownEvent ev) {
 	if(key_esc.match(ev))
 	    choice(null);
 	return(true);
     }
 
     protected void added() {
-	mg = ui.grabmouse(this);
-	kg = ui.grabkeys(this);
+	if(grab) {
+	    mg = ui.grabmouse(this);
+	    kg = ui.grabkeys(this);
+	}
     }
 
     public void destroy() {
-	mg.remove();
-	kg.remove();
+	if(mg != null) {
+	    mg.remove();
+	    kg.remove();
+	}
 	super.destroy();
-    }
-
-    public Object tooltip(Coord c, Widget prev) {
-	Object ret = super.tooltip(c, prev);
-	return((ret != null) ? ret : "");
     }
 
     public SListMenu<I, W> addat(Widget wdg, Coord c) {
 	wdg.ui.root.add(this, wdg.rootpos(c));
+	return(this);
+    }
+
+    public SListMenu nograb() {
+	grab = false;
 	return(this);
     }
 
@@ -210,8 +224,12 @@ public abstract class SListMenu<I, W extends Widget> extends Widget {
 	}
     }
 
+    public static SListMenu<Action, Widget> of(Coord sz, Text.Foundry fnd, List<? extends Action> actions, Runnable cancel) {
+	return(of(sz, fnd, actions, Action::name, Action::run, cancel));
+    }
+
     public static SListMenu<Action, Widget> of(Coord sz, Text.Foundry fnd, List<? extends Action> actions) {
-	return(of(sz, fnd, actions, Action::name, Action::run, null));
+	return(of(sz, fnd, actions, null));
     }
 
     public static abstract class IconMenu<I> extends SListMenu<I, Widget> {

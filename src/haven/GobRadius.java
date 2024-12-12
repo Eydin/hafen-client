@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import haven.res.gfx.fx.msrad.MSRad;
+import me.ender.ClientUtils;
 
 import java.awt.*;
 import java.lang.reflect.Type;
@@ -22,6 +23,7 @@ public class GobRadius {
 	gobRadiusCfg = parseJson(Config.loadFile(GOB_RADIUS_JSON));
 	showDefaultRadii(CFG.SHOW_GOB_RADIUS.get());
 	CFG.SHOW_GOB_RADIUS.observe(GobRadius::showDefaultRadii);
+	CFG.SHOW_MINE_SUPPORT_AS_OVERLAY.observe(GobRadius::updateOverlay);
     }
     
     private static Map<String, GobRadius> parseJson(String json) {
@@ -47,6 +49,13 @@ public class GobRadius {
 	return gobRadiusCfg.get(resname);
     }
     
+    public static void updateOverlay(CFG<Boolean> show) {
+	if(CFG.SHOW_GOB_RADIUS.get()) {
+	    showDefaultRadii(false);
+	    showDefaultRadii(true);
+	}
+    }
+    
     public static void showDefaultRadii(CFG<Boolean> show) {
 	showDefaultRadii(show.get());
     }
@@ -62,7 +71,7 @@ public class GobRadius {
     }
 
     public Color color() {
-	Color c = Utils.hex2color(color, null);
+	Color c = ClientUtils.hex2color(color, null);
 	if(c == null) {
 	    return DEF_COL;
 	}
@@ -70,7 +79,7 @@ public class GobRadius {
     }
     
     public Color color2() {
-	Color c = Utils.hex2color(color2, null);
+	Color c = ClientUtils.hex2color(color2, null);
 	if(c == null) {
 	    c = color();
 	    return new Color(c.getRed(), c.getGreen(), c.getBlue(), 255);

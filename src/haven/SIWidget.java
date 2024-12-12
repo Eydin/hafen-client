@@ -44,7 +44,7 @@ public abstract class SIWidget extends Widget {
     }
 
     public void draw(GOut g) {
-	if(this.surf == null) {
+	if(this.surf == null && sz.x > 0 && sz.y > 0) {
 	    this.surf = new TexI(draw());
 	}
 	g.image(surf, Coord.z);

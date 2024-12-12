@@ -37,6 +37,8 @@ import java.lang.reflect.*;
 public class MainFrame extends java.awt.Frame implements Console.Directory {
     private static final String TITLE = String.format("Haven & Hearth modified by Ender (v%s)", Config.version);
     public static final Config.Variable<Boolean> initfullscreen = Config.Variable.propb("haven.fullscreen", false);
+    public static final Config.Variable<String> renderer = Config.Variable.prop("haven.renderer", "jogl");
+    public static final Config.Variable<Boolean> status = Config.Variable.propb("haven.status", false);
     final UIPanel p;
     private final ThreadGroup g;
     private Thread mt;
@@ -44,10 +46,15 @@ public class MainFrame extends java.awt.Frame implements Console.Directory {
     DisplayMode fsmode = null, prefs = null;
     Coord prefssz = null;
 	
-    static {
+    public static void initawt() {
 	try {
+	    System.setProperty("apple.awt.application.name", "Haven & Hearth");
 	    javax.swing.UIManager.setLookAndFeel(javax.swing.UIManager.getSystemLookAndFeelClassName());
 	} catch(Exception e) {}
+    }
+
+    static {
+	initawt();
     }
 	
     DisplayMode findmode(int w, int h) {
@@ -167,6 +174,24 @@ public class MainFrame extends java.awt.Frame implements Console.Directory {
 	    throw(new Error(e));
 	}
 	setIconImage(icon);
+	try {
+	    Class<?> ctb = Class.forName("java.awt.Taskbar");
+	    Object tb = ctb.getMethod("getTaskbar").invoke(null);
+	    ctb.getMethod("setIconImage", Image.class).invoke(tb, icon);
+	} catch(Exception e) {
+	}
+    }
+
+    private UIPanel renderer() {
+	String id = renderer.get();
+	switch(id) {
+	case "jogl":
+	    return(new JOGLPanel());
+	case "lwjgl":
+	    return(new LWJGLPanel());
+	default:
+	    throw(new RuntimeException("invalid renderer specified in haven.renderer: " + id));
+	}
     }
 
     public MainFrame(Coord isz) {
@@ -180,13 +205,14 @@ public class MainFrame extends java.awt.Frame implements Console.Directory {
 	    sz = isz;
 	}
 	this.g = new ThreadGroup(HackThread.tg(), "Haven client");
-	Component pp = (Component)(this.p = new JOGLPanel(sz));
+	Component pp = (Component)(this.p = renderer());
 	if(fsmode == null) {
 	    Coord pfm = Utils.getprefc("fsmode", null);
 	    if((pfm != null) && !pfm.equals(Coord.z))
 		fsmode = findmode(pfm.x, pfm.y);
 	}
 	add(pp);
+	pp.setSize(sz.x, sz.y);
 	pack();
 	setResizable(!Utils.getprefb("wndlock", false));
 	pp.requestFocus();
@@ -250,8 +276,11 @@ public class MainFrame extends java.awt.Frame implements Console.Directory {
 	    try {
 		AuthClient cl = new AuthClient((Bootstrap.authserv.get() == null) ? Bootstrap.defserv.get() : Bootstrap.authserv.get(), Bootstrap.authport.get());
 		try {
-		    if((username = cl.trytoken(username, Utils.hex2byte(token))) == null)
+		    try {
+			username = new AuthClient.TokenCred(username, Utils.hex2byte(token)).tryauth(cl);
+		    } catch(AuthClient.Credentials.AuthException e) {
 			throw(new ConnectionError("authentication with saved token failed"));
+		    }
 		    cookie = cl.getcookie();
 		} finally {
 		    cl.close();
@@ -260,33 +289,15 @@ public class MainFrame extends java.awt.Frame implements Console.Directory {
 		throw(new RuntimeException(e));
 	    }
 	}
-	Session sess;
 	try {
-	    sess = new Session(new java.net.InetSocketAddress(java.net.InetAddress.getByName(Bootstrap.defserv.get()), Bootstrap.mainport.get()), username, cookie, args);
+	    return(new Session(new java.net.InetSocketAddress(java.net.InetAddress.getByName(Bootstrap.defserv.get()), Bootstrap.mainport.get()), username, cookie, args));
+	} catch(Connection.SessionError e) {
+	    throw(new ConnectionError(e.getMessage()));
+	} catch(InterruptedException exc) {
+	    throw(new RuntimeException(exc));
 	} catch(IOException e) {
 	    throw(new RuntimeException(e));
 	}
-	boolean irq = false;
-	try {
-	    synchronized(sess) {
-		while(sess.state != "") {
-		    if(sess.connfailed != 0) {
-			if(sess.connerror != null)
-			    throw(new ConnectionError(sess.connerror));
-			throw(new ConnectionError(String.format("connection failure: %d", sess.connfailed)));
-		    }
-		    try {
-			sess.wait();
-		    } catch(InterruptedException e) {
-			irq = true;
-		    }
-		}
-	    }
-	} finally {
-	    if(irq)
-		Thread.currentThread().interrupt();
-	}
-	return(sess);
     }
 
     private void uiloop() throws InterruptedException {
@@ -408,8 +419,17 @@ public class MainFrame extends java.awt.Frame implements Console.Directory {
 	javax.imageio.spi.IIORegistry.getDefaultInstance();
     }
 
+    public static void status(String state) {
+	if(status.get()) {
+	    System.out.println("hafen:status:" + state);
+	    System.out.flush();
+	}
+    }
+
     private static void main2(String[] args) {
+	initfullscreen.set(CFG.VIDEO_FULL_SCREEN.get());
 	Config.cmdline(args);
+	status("start");
 	try {
 	    javabughack();
 	} catch(InterruptedException e) {
@@ -426,33 +446,38 @@ public class MainFrame extends java.awt.Frame implements Console.Directory {
 	    }
 	}
 	MainFrame f = new MainFrame(null);
+	status("visible");
 	if(initfullscreen.get())
 	    f.setfs();
 	f.run(fun);
 	resdump();
+	status("exit");
 	System.exit(0);
     }
     
     public static void main(final String[] args) {
 	/* Set up the error handler as early as humanly possible. */
 	ThreadGroup g = new ThreadGroup("Haven main group");
-	String ed;
-	URL errordest = null;
-	try {
-	    if(!(ed = Utils.getprop("haven.errorurl", "")).equals("")) {
-		errordest = new java.net.URL(ed);
+	String ed = Config.get().getprop("haven.errorurl", "");
+	if(ed.equals("stderr")) {
+	    g = new haven.error.SimpleHandler("Haven main group", true);
+	} else {
+	    URL errordest = null;
+	    try {
+		if(!(ed = Utils.getprop("haven.errorurl", "")).equals("")) {
+		    errordest = new java.net.URI(ed).toURL();
+		}
+	    } catch (java.net.MalformedURLException | java.net.URISyntaxException e) {
 	    }
-	} catch (java.net.MalformedURLException e) {
+	    final haven.error.ErrorHandler hg = new haven.error.ErrorHandler(errordest);
+	    hg.sethandler(new haven.error.ErrorGui(null) {
+		public void errorsent() {
+		    hg.interrupt();
+		}
+	    });
+	    g = hg;
+	    new DeadlockWatchdog(hg).start();
 	}
-	final haven.error.ErrorHandler hg = new haven.error.ErrorHandler(errordest);
-	hg.sethandler(new haven.error.ErrorGui(null) {
-	    public void errorsent() {
-		hg.interrupt();
-	    }
-	});
-	g = hg;
-	new DeadlockWatchdog(hg).start();
-    
 	Thread main = new HackThread(g, () -> main2(args), "Haven main thread");
 	main.start();
     }

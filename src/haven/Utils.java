@@ -26,10 +26,6 @@
 
 package haven;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.reflect.TypeToken;
-
 import java.awt.RenderingHints;
 import java.io.*;
 import java.nio.*;
@@ -37,17 +33,14 @@ import java.nio.file.*;
 import java.net.*;
 import java.lang.ref.*;
 import java.lang.reflect.*;
-import java.nio.charset.StandardCharsets;
 import java.text.DecimalFormat;
-import java.text.SimpleDateFormat;
 import java.util.prefs.*;
+import java.security.*;
 import java.util.*;
 import java.util.function.*;
 import java.awt.Graphics;
 import java.awt.Color;
 import java.awt.image.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class Utils {
     public static final java.nio.charset.Charset utf8 = java.nio.charset.Charset.forName("UTF-8");
@@ -79,22 +72,29 @@ public class Utils {
 	    });
     }
 
-    static void drawgay(BufferedImage t, BufferedImage img, Coord c) {
-	Coord sz = imgsz(img);
-	for(int y = 0; y < sz.y; y++) {
-	    for(int x = 0; x < sz.x; x++) {
-		int p = img.getRGB(x, y);
-		if(Utils.rgbm.getAlpha(p) > 128) {
-		    if((p & 0x00ffffff) == 0x00ff0080)
-			t.setRGB(x + c.x, y + c.y, 0);
-		    else
-			t.setRGB(x + c.x, y + c.y, p);
-		}
-	    }
+    public static URI uri(String uri) {
+	try {
+	    return(new URI(uri));
+	} catch(URISyntaxException e) {
+	    throw(new IllegalArgumentException(uri, e));
 	}
     }
 
+    public static URL url(URI uri) {
+	try {
+	    return(uri.toURL());
+	} catch(MalformedURLException e) {
+	    throw(new IllegalArgumentException(uri.toString(), e));
+	}
+    }
+
+    public static URL url(String url) {
+	return(url(uri(url)));
+    }
+
     public static Path path(String path) {
+	if(path == null)
+	    return(null);
 	return(FileSystems.getDefault().getPath(path));
     }
 
@@ -432,6 +432,68 @@ public class Utils {
 	}
     }
 
+    public static int iv(Object arg) {
+	return(((Number)arg).intValue());
+    }
+
+    public static long uiv(Object arg) {
+	return(uint32(iv(arg)));
+    }
+
+    public static float fv(Object arg) {
+	return(((Number)arg).floatValue());
+    }
+
+    public static double dv(Object arg) {
+	return(((Number)arg).doubleValue());
+    }
+
+    public static boolean bv(Object arg) {
+	return(iv(arg) != 0);
+    }
+
+    /* Nested format: [[KEY, VALUE], [KEY, VALUE], ...] */
+    public static <K, V> Map<K, V> mapdecn(Object ob, Class<K> kt, Class<V> vt) {
+	Map<K, V> ret = new HashMap<>();
+	Object[] enc = (Object[])ob;
+	for(Object sob : enc) {
+	    Object[] ent = (Object[])sob;
+	    ret.put(kt.cast(ent[0]), vt.cast(ent[1]));
+	}
+	return(ret);
+    }
+    public static Map<Object, Object> mapdecn(Object ob) {
+	return(mapdecn(ob, Object.class, Object.class));
+    }
+    public static Object mapencn(Map<?, ?> map) {
+	Object[] ret = new Object[map.size()];
+	int a = 0;
+	for(Map.Entry<?, ?> ent : map.entrySet())
+	    ret[a++] = new Object[] {ent.getKey(), ent.getValue()};
+	return(ret);
+    }
+
+    /* Flat format: [KEY, VALUE, KEY, VALUE, ...] */
+    public static <K, V> Map<K, V> mapdecf(Object ob, Class<K> kt, Class<V> vt) {
+	Map<K, V> ret = new HashMap<>();
+	Object[] enc = (Object[])ob;
+	for(int a = 0; a < enc.length - 1; a += 2)
+	    ret.put(kt.cast(enc[a]), vt.cast(enc[a + 1]));
+	return(ret);
+    }
+    public static Map<Object, Object> mapdecf(Object ob) {
+	return(mapdecf(ob, Object.class, Object.class));
+    }
+    public static Object mapencf(Map<?, ?> map) {
+	Object[] ret = new Object[map.size() * 2];
+	int a = 0;
+	for(Map.Entry<?, ?> ent : map.entrySet()) {
+	    ret[a + 0] = ent.getKey();
+	    ret[a + 1] = ent.getValue();
+	}
+	return(ret);
+    }
+
     public static int sb(int n, int b) {
 	return((n << (32 - b)) >> (32 - b));
     }
@@ -578,101 +640,10 @@ public class Utils {
 	if(ze == 8) ret[2] = 0; else ret[2] = Float.intBitsToFloat((zs << 31) | ((me - ze + 127) << 23) | ((zb << (ze + 16)) & 0x007fffff));
     }
 
-    public static float hfdec(short bits) {
-	int b = ((int)bits) & 0xffff;
-	int e = (b & 0x7c00) >> 10;
-	int m = b & 0x03ff;
-	int ee;
-	if(e == 0) {
-	    if(m == 0) {
-		ee = 0;
-	    } else {
-		int n = Integer.numberOfLeadingZeros(m) - 22;
-		ee = (-15 - n) + 127;
-		m = (m << (n + 1)) & 0x03ff;
-	    }
-	} else if(e == 0x1f) {
-	    ee = 0xff;
-	} else {
-	    ee = e - 15 + 127;
-	}
-	int f32 = ((b & 0x8000) << 16) |
-	    (ee << 23) |
-	    (m << 13);
-	return(Float.intBitsToFloat(f32));
-    }
-
-    public static short hfenc(float f) {
-	int b = Float.floatToIntBits(f);
-	int e = (b & 0x7f800000) >> 23;
-	int m = b & 0x007fffff;
-	int ee;
-	if(e == 0) {
-	    ee = 0;
-	    m = 0;
-	} else if(e == 0xff) {
-	    ee = 0x1f;
-	} else if(e < 127 - 14) {
-	    ee = 0;
-	    m = (m | 0x00800000) >> ((127 - 14) - e);
-	} else if(e > 127 + 15) {
-	    return(((b & 0x80000000) == 0)?((short)0x7c00):((short)0xfc00));
-	} else {
-	    ee = e - 127 + 15;
-	}
-	int f16 = ((b >> 16) & 0x8000) |
-	    (ee << 10) |
-	    (m >> 13);
-	return((short)f16);
-    }
-
-    public static float mfdec(byte bits) {
-	int b = ((int)bits) & 0xff;
-	int e = (b & 0x78) >> 3;
-	int m = b & 0x07;
-	int ee;
-	if(e == 0) {
-	    if(m == 0) {
-		ee = 0;
-	    } else {
-		int n = Integer.numberOfLeadingZeros(m) - 29;
-		ee = (-7 - n) + 127;
-		m = (m << (n + 1)) & 0x07;
-	    }
-	} else if(e == 0x0f) {
-	    ee = 0xff;
-	} else {
-	    ee = e - 7 + 127;
-	}
-	int f32 = ((b & 0x80) << 24) |
-	    (ee << 23) |
-	    (m << 20);
-	return(Float.intBitsToFloat(f32));
-    }
-
-    public static byte mfenc(float f) {
-	int b = Float.floatToIntBits(f);
-	int e = (b & 0x7f800000) >> 23;
-	int m = b & 0x007fffff;
-	int ee;
-	if(e == 0) {
-	    ee = 0;
-	    m = 0;
-	} else if(e == 0xff) {
-	    ee = 0x0f;
-	} else if(e < 127 - 6) {
-	    ee = 0;
-	    m = (m | 0x00800000) >> ((127 - 6) - e);
-	} else if(e > 127 + 7) {
-	    return(((b & 0x80000000) == 0)?((byte)0x78):((byte)0xf8));
-	} else {
-	    ee = e - 127 + 7;
-	}
-	int f8 = ((b >> 24) & 0x80) |
-	    (ee << 3) |
-	    (m >> 20);
-	return((byte)f8);
-    }
+    public static float hfdec(short bits) {return(HalfFloat.bits(bits));}
+    public static short hfenc(float f)    {return(HalfFloat.bits(f));}
+    public static float mfdec(byte bits)  {return(MiniFloat.bits(bits));}
+    public static byte  mfenc(float f)    {return(MiniFloat.bits(f));}
 
     public static void uvec2oct(float[] buf, float x, float y, float z) {
 	float m = 1.0f / (Math.abs(x) + Math.abs(y) + Math.abs(z));
@@ -1123,12 +1094,12 @@ public class Utils {
     public static Color contrast(Color col) {
 	int max = Math.max(col.getRed(), Math.max(col.getGreen(), col.getBlue()));
 	if(max > 128) {
-	    return(new Color(col.getRed() / 2, col.getGreen() / 2, col.getBlue() / 2, col.getAlpha()));
+	    return(new Color(col.getRed() / 4, col.getGreen() / 4, col.getBlue() / 4, col.getAlpha()));
 	} else if(max == 0) {
 	    return(Color.WHITE);
 	} else {
-	    int f = 128 / max;
-	    return(new Color(col.getRed() * f, col.getGreen() * f, col.getBlue() * f, col.getAlpha()));
+	    int f = 65025 / max;
+	    return(new Color((col.getRed() * f) / 255, (col.getGreen() * f) / 255, (col.getBlue() * f) / 255, col.getAlpha()));
 	}
     }
 
@@ -1319,6 +1290,10 @@ public class Utils {
 	return(a);
     }
 
+    public static float smoothstep(float d) {
+	return(d * d * (3 - (2 * d)));
+    }
+
     public static double smoothstep(double d) {
 	return(d * d * (3 - (2 * d)));
     }
@@ -1339,6 +1314,11 @@ public class Utils {
 			 ((x.getGreen() * f2) + (y.getGreen() * f1)) / 255,
 			 ((x.getBlue()  * f2) + (y.getBlue()  * f1)) / 255,
 			 ((x.getAlpha() * f2) + (y.getAlpha() * f1)) / 255));
+    }
+
+    public static Color colmul(Color a, Color b) {
+	return(new Color((a.getRed()  * b.getRed() ) / 255, (a.getGreen() * b.getGreen()) / 255,
+			 (a.getBlue() * b.getBlue()) / 255, (a.getAlpha() * b.getAlpha()) / 255));
     }
 
     public static Color blendcol(double a, Color... cols) {
@@ -1491,7 +1471,7 @@ public class Utils {
     }
     */
     public static ByteBuffer wbbuf(int n) {
-	return(ByteBuffer.wrap(new byte[n]));
+	return(ByteBuffer.wrap(new byte[n]).order(ByteOrder.nativeOrder()));
     }
     public static IntBuffer wibuf(int n) {
 	return(IntBuffer.wrap(new int[n]));
@@ -1585,6 +1565,14 @@ public class Utils {
     }
 
     @SuppressWarnings("unchecked")
+    public static <T> T[] cast(Object[] a, Class<T> cl) {
+	T[] d = (T[])Array.newInstance(cl, a.length);
+	for(int i = 0; i < a.length; i++)
+	    d[i] = cl.cast(a[i]);
+	return(d);
+    }
+
+    @SuppressWarnings("unchecked")
     public static <T> T[] extend(T[] src, int off, int nl) {
 	T[] dst = (T[])Array.newInstance(src.getClass().getComponentType(), nl);
 	System.arraycopy(src, off, dst, 0, Math.min(src.length - off, dst.length));
@@ -1629,6 +1617,19 @@ public class Utils {
 	short[] dst = new short[nl];
 	System.arraycopy(src, 0, dst, 0, Math.min(src.length, dst.length));
 	return(dst);
+    }
+
+    public static byte[] concat(byte[]... parts) {
+	int n = 0;
+	for(byte[] p : parts)
+	    n += p.length;
+	byte[] rv = new byte[n];
+	int o = 0;
+	for(byte[] p : parts) {
+	    System.arraycopy(p, 0, rv, o, p.length);
+	    o += p.length;
+	}
+	return(rv);
     }
 
     public static <T> T el(Iterable<T> c) {
@@ -1801,27 +1802,28 @@ public class Utils {
 	return(buf.toString());
     }
 
-    public static URL urlparam(URL base, String... pars) {
-	/* Why is Java so horribly bad? */
-	String file = base.getFile();
-	int p = file.indexOf('?');
+    public static URI uriparam(URI base, Object... pars) {
 	StringBuilder buf = new StringBuilder();
-	if(p >= 0) {
-	    /* For now, only add; don't augment. Since Java sucks. */
-	    buf.append('&');
-	} else {
-	    buf.append('?');
-	}
+	if(base.getRawQuery() != null)
+	    buf.append(base.getRawQuery());
 	for(int i = 0; i < pars.length; i += 2) {
-	    if(i > 0)
+	    if(buf.length() > 0)
 		buf.append('&');
-	    buf.append(urlencode(pars[i]));
+	    buf.append(urlencode(String.valueOf(pars[i])));
 	    buf.append('=');
-	    buf.append(urlencode(pars[i + 1]));
+	    buf.append(urlencode(String.valueOf(pars[i + 1])));
 	}
 	try {
-	    return(new URL(base.getProtocol(), base.getHost(), base.getPort(), file + buf.toString()));
-	} catch(java.net.MalformedURLException e) {
+	    /* The component constructors for URI don't properly
+	     * preserve quoted characters.
+	     *
+	     * It's all so tiresome. */
+	    String sbase = base.toString();
+	    int p = sbase.indexOf('?');
+	    if(p >= 0)
+		sbase = sbase.substring(0, p);
+	    return(new URI(sbase + '?' + buf.toString()));
+	} catch(URISyntaxException e) {
 	    throw(new RuntimeException(e));
 	}
     }
@@ -1861,7 +1863,7 @@ public class Utils {
 	}
     }
 
-    public static class Range extends AbstractCollection<Integer> {
+    public static class Range extends AbstractList<Integer> {
 	public final int min, max, step;
 
 	public Range(int min, int max, int step) {
@@ -1874,28 +1876,17 @@ public class Utils {
 	    return(Math.max((max - min + step - 1) / step, 0));
 	}
 
-	public Iterator<Integer> iterator() {
-	    return(new Iterator<Integer>() {
-		    private int cur = min;
-
-		    public boolean hasNext() {
-			return((step > 0) ? (cur < max) : (cur > max));
-		    }
-
-		    public Integer next() {
-			if(!hasNext())
-			    throw(new NoSuchElementException());
-			int ret = cur;
-			cur += step;
-			return(ret);
-		    }
-		});
+	public Integer get(int idx) {
+	    int rv = min + (step * idx);
+	    if((rv < min) || (rv >= max))
+		throw(new NoSuchElementException());
+	    return(rv);
 	}
     }
 
-    public static Collection<Integer> range(int min, int max, int step) {return(new Range(min, max, step));}
-    public static Collection<Integer> range(int min, int max) {return(range(min, max, 1));}
-    public static Collection<Integer> range(int max) {return(range(0, max));}
+    public static List<Integer> range(int min, int max, int step) {return(new Range(min, max, step));}
+    public static List<Integer> range(int min, int max) {return(range(min, max, 1));}
+    public static List<Integer> range(int max) {return(range(0, max));}
 
     public static <T> Indir<T> cache(Indir<T> src) {
 	return(new Indir<T>() {
@@ -1908,6 +1899,23 @@ public class Utils {
 			has = true;
 		    }
 		    return(val);
+		}
+	    });
+    }
+
+    public static <V, R> Indir<R> transform(Supplier<? extends V> val, Function<? super V, ? extends R> xf) {
+	return(new Indir<R>() {
+		private V last;
+		private R res;
+		private boolean has = false;
+
+		public R get() {
+		    V v = val.get();
+		    if(!has || !Utils.eq(last, v)) {
+			res = xf.apply(v);
+			last = v;
+		    }
+		    return(res);
 		}
 	    });
     }
@@ -2044,6 +2052,26 @@ public class Utils {
 	    });
     }
 
+    public static class AddressFormatException extends IllegalArgumentException {
+	public final String addr, type;
+
+	public AddressFormatException(String message, CharSequence addr, String type) {
+	    super(message);
+	    this.addr = addr.toString();
+	    this.type = type;
+	}
+
+	public AddressFormatException(String message, CharSequence addr, String type, Throwable cause) {
+	    super(message, cause);
+	    this.addr = addr.toString();
+	    this.type = type;
+	}
+
+	public String getMessage() {
+	    return(super.getMessage() + ": " + addr + " (" + type + ")");
+	}
+    }
+
     public static Inet4Address in4_pton(CharSequence as) {
 	int dbuf = -1, o = 0;
 	byte[] abuf = new byte[4];
@@ -2052,22 +2080,22 @@ public class Utils {
 	    if((c >= '0') && (c <= '9')) {
 		dbuf = (((dbuf < 0) ? 0 : dbuf) * 10) + (c - '0');
 		if(dbuf >= 256)
-		    throw(new IllegalArgumentException("illegal octet"));
+		    throw(new AddressFormatException("illegal octet", as, "in4"));
 	    } else if(c == '.') {
 		if(dbuf < 0)
-		    throw(new IllegalArgumentException("dot without preceding octet"));
+		    throw(new AddressFormatException("dot without preceding octet", as, "in4"));
 		if(o >= 3)
-		    throw(new IllegalArgumentException("too many address octets"));
+		    throw(new AddressFormatException("too many address octets", as, "in4"));
 		abuf[o++] = (byte)dbuf;
 		dbuf = -1;
 	    } else {
-		throw(new IllegalArgumentException("illegal address character"));
+		throw(new AddressFormatException("illegal address character", as, "in4"));
 	    }
 	}
 	if(dbuf < 0)
-	    throw(new IllegalArgumentException("end without preceding octet"));
+	    throw(new AddressFormatException("end without preceding octet", as, "in4"));
 	if(o != 3)
-	    throw(new IllegalArgumentException("too few address octets"));
+	    throw(new AddressFormatException("too few address octets", as, "in4"));
 	abuf[o++] = (byte)dbuf;
 	try {
 	    return((Inet4Address)InetAddress.getByAddress(abuf));
@@ -2095,14 +2123,14 @@ public class Utils {
 		    hbuf = dbuf = 0;
 		hbuf = (hbuf * 16) + dv;
 		if(hbuf >= 65536)
-		    throw(new IllegalArgumentException("illegal address number"));
+		    throw(new AddressFormatException("illegal address number", as, "in6"));
 		if(dbuf >= 0)
 		    dbuf = (dv >= 10) ? -1 : ((dbuf * 10) + dv);
 		if(dbuf >= 256)
 		    dbuf = -1;
 	    } else if(c == ':') {
 		if(v4map >= 0)
-		    throw(new IllegalArgumentException("illegal embedded v4 address"));
+		    throw(new AddressFormatException("illegal embedded v4 address", as, "in6"));
 		if(hbuf < 0) {
 		    if(p == 0) {
 			if(o[p] == 0) {
@@ -2110,66 +2138,66 @@ public class Utils {
 				p = 1;
 				i++;
 			    } else {
-				throw(new IllegalArgumentException("colon without preceeding address number"));
+				throw(new AddressFormatException("colon without preceeding address number", as, "in6"));
 			    }
 			} else {
 			    p = 1;
 			}
 		    } else {
-			throw(new IllegalArgumentException("duplicate zero-string"));
+			throw(new AddressFormatException("duplicate zero-string", as, "in6"));
 		    }
 		} else {
 		    if(o[p] >= 14)
-			throw(new IllegalArgumentException("too many address numbers"));
+			throw(new AddressFormatException("too many address numbers", as, "in6"));
 		    abuf[p][o[p]++] = (byte)((hbuf & 0xff00) >> 8);
 		    abuf[p][o[p]++] = (byte) (hbuf & 0x00ff);
 		    hbuf = -1;
 		}
 	    } else if(c == '.') {
 		if((hbuf < 0) || (dbuf < 0))
-		    throw(new IllegalArgumentException("illegal embedded v4 octet"));
+		    throw(new AddressFormatException("illegal embedded v4 octet", as, "in6"));
 		if((p == 0) && (o[p] == 0))
-		    throw(new IllegalArgumentException("embedded v4 at start of address"));
+		    throw(new AddressFormatException("embedded v4 at start of address", as, "in6"));
 		if(v4map++ >= 2)
-		    throw(new IllegalArgumentException("too many embedded v4 octets"));
+		    throw(new AddressFormatException("too many embedded v4 octets", as, "in6"));
 		if(o[p] >= 15)
-		    throw(new IllegalArgumentException("too many address numbers"));
+		    throw(new AddressFormatException("too many address numbers", as, "in6"));
 		abuf[p][o[p]++] = (byte)dbuf;
 		hbuf = -1;
 	    } else if(c == '%') {
 		scope = as.subSequence(i + 1, as.length()).toString();
 		break;
 	    } else {
-		throw(new IllegalArgumentException("illegal address character"));
+		throw(new AddressFormatException("illegal address character", as, "in6"));
 	    }
 	}
 	if(hbuf < 0) {
 	    if((p < 1) || (o[p] > 0))
-		throw(new IllegalArgumentException("unterminated address"));
+		throw(new AddressFormatException("unterminated address", as, "in6"));
 	} else {
 	    if(v4map < 0) {
 		if(o[p] >= 15)
-		    throw(new IllegalArgumentException("too many address numbers"));
+		    throw(new AddressFormatException("too many address numbers", as, "in6"));
 		abuf[p][o[p]++] = (byte)((hbuf & 0xff00) >> 8);
 		abuf[p][o[p]++] = (byte) (hbuf & 0x00ff);
 	    } else {
 		if(dbuf < 0)
-		    throw(new IllegalArgumentException("illegal embedded v4 octet"));
+		    throw(new AddressFormatException("illegal embedded v4 octet", as, "in6"));
 		if(v4map != 2)
-		    throw(new IllegalArgumentException("too few embedded v4 octets"));
+		    throw(new AddressFormatException("too few embedded v4 octets", as, "in6"));
 		if(o[p] >= 16)
-		    throw(new IllegalArgumentException("too many address numbers"));
+		    throw(new AddressFormatException("too many address numbers", as, "in6"));
 		abuf[p][o[p]++] = (byte)dbuf;
 	    }
 	}
 	byte[] fbuf;
 	if(p == 0) {
 	    if(o[0] != 16)
-		throw(new IllegalArgumentException("too few address numbers"));
+		throw(new AddressFormatException("too few address numbers", as, "in6"));
 	    fbuf = abuf[0];
 	} else {
 	    if((o[0] + o[1]) >= 16)
-		throw(new IllegalArgumentException("illegal zero-string"));
+		throw(new AddressFormatException("illegal zero-string", as, "in6"));
 	    fbuf = new byte[16];
 	    System.arraycopy(abuf[0], 0, fbuf, 0, o[0]);
 	    System.arraycopy(abuf[1], 0, fbuf, 16 - o[1], o[1]);
@@ -2183,10 +2211,10 @@ public class Utils {
 		try {
 		    NetworkInterface iface = NetworkInterface.getByName(scope);
 		    if(iface == null)
-			throw(new IllegalArgumentException("could not resolve scoped interface: " + scope));
+			throw(new AddressFormatException("could not resolve scoped interface: " + scope, as, "in6"));
 		    return(Inet6Address.getByAddress(null, fbuf, iface));
 		} catch(SocketException e2) {
-		    throw(new IllegalArgumentException("could not resolve scoped interface: " + scope, e));
+		    throw(new AddressFormatException("could not resolve scoped interface: " + scope, as, "in6", e));
 		}
 	    }
 	} catch(UnknownHostException e) {
@@ -2205,6 +2233,33 @@ public class Utils {
 		throw(e2);
 	    }
 	}
+    }
+
+    @SuppressWarnings("unchecked")
+    public static int compare(Object[] a, Object[] b) {
+	int i = 0;
+	for(i = 0; (i < a.length) && (i < b.length); i++) {
+	    if((a[i] == null) && (b[i] == null)) {
+	    } else if(a[i] == null) {
+		return(-1);
+	    } else if(b[i] == null) {
+		return(1);
+	    } else {
+		if(a[i].getClass() != b[i].getClass()) {
+		    return(a[i].getClass().getName().compareTo(b[i].getClass().getName()));
+		} else if(Comparable.class.isAssignableFrom(a[i].getClass())) {
+		    return(((Comparable)a[i]).compareTo(b[i]));
+		} else {
+		    if(a[i] != b[i])
+			return(sidcmp(a[i], b[i]));
+		}
+	    }
+	}
+	if(a.length < b.length)
+	    return(-1);
+	if(a.length > b.length)
+	    return(1);
+	return(0);
     }
 
     public static final Comparator<Object> idcmp = new Comparator<Object>() {
@@ -2273,194 +2328,7 @@ public class Utils {
 	    }
 	}
     };
-
-    public static String timestamp() {
-	return new SimpleDateFormat("HH:mm").format(new Date());
-    }
-
-    public static String timestamp(String text) {
-	return String.format("[%s] %s", timestamp(), text);
-    }
-
-    public static String stream2str(InputStream is) {
-	StringBuilder buffer = new StringBuilder();
-	BufferedReader in = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
-	String line;
-	boolean first = true;
-	try {
-	    while ((line = in.readLine()) != null) {
-		if(!first) {buffer.append("\n");}
-		buffer.append(line);
-		first = false;
-	    }
-	} catch (IOException ignored) {
-	}
-	return buffer.toString();
-    }
-
-    public static Color hex2color(String hex, Color def){
-	Color c = def;
-	if (hex != null) {
-	    try {
-		int col = (int) Long.parseLong(hex, 16);
-		boolean hasAlpha = (0xff000000 & col) != 0;
-		c = new Color(col, hasAlpha);
-	    } catch (Exception ignored) {}
-	}
-	return c;
-    }
-
-    public static String color2hex(Color col){
-	if(col != null){
-	    return Integer.toHexString(col.getRGB());
-	}
-	return null;
-    }
     
-    private static final DecimalFormat f2sfmt = new DecimalFormat("0");
-    
-    public static String f2s(double f) {return f2s(f, 2);}
-    
-    public static String f2s(double f, int precision) {
-	f2sfmt.setMaximumFractionDigits(precision);
-	return f2sfmt.format(f);
-    }
-
-    //Liang-Barsky algorithm
-    public static Pair<Coord, Coord> clipLine(Coord a, Coord b, Coord ul, Coord br) {
-	// Define the x/y clipping values for the border.
-	double edgeLeft = ul.x;
-	double edgeRight = br.x;
-	double edgeBottom = ul.y;
-	double edgeTop = br.y;
-	
-	// Define the start and end points of the line.
-	double x0src = a.x;
-	double y0src = a.y;
-	double x1src = b.x;
-	double y1src = b.y;
-	
-	double t0 = 0.0;
-	double t1 = 1.0;
-	double xdelta = x1src - x0src;
-	double ydelta = y1src - y0src;
-	double p = 0, q = 0, r;
-	
-	for (int edge = 0; edge < 4; edge++) {   // Traverse through left, right, bottom, top edges.
-	    if(edge == 0) {
-		p = -xdelta;
-		q = -(edgeLeft - x0src);
-	    }
-	    if(edge == 1) {
-		p = xdelta;
-		q = (edgeRight - x0src);
-	    }
-	    if(edge == 2) {
-		p = -ydelta;
-		q = -(edgeBottom - y0src);
-	    }
-	    if(edge == 3) {
-		p = ydelta;
-		q = (edgeTop - y0src);
-	    }
-	    if(p == 0 && q < 0) return null;   // Don't draw line at all. (parallel line outside)
-	    r = q / p;
-	    
-	    if(p < 0) {
-		if(r > t1) return null;         // Don't draw line at all.
-		else if(r > t0) t0 = r;         // Line is clipped!
-	    } else if(p > 0) {
-		if(r < t0) return null;      // Don't draw line at all.
-		else if(r < t1) t1 = r;      // Line is clipped!
-	    }
-	}
-	
-	return new Pair<>(
-	    new Coord((int) (x0src + t0 * xdelta), (int) (y0src + t0 * ydelta)),
-	    new Coord((int) (x0src + t1 * xdelta), (int) (y0src + t1 * ydelta))
-	);
-    }
-    
-    public static Optional<Coord2d> intersect(Pair<Coord2d, Coord2d> lineA, Pair<Coord2d, Coord2d> lineB) {
-	double a1 = lineA.b.y - lineA.a.y;
-	double b1 = lineA.a.x - lineA.b.x;
-	double c1 = a1 * lineA.a.x + b1 * lineA.a.y;
-	
-	double a2 = lineB.b.y - lineB.a.y;
-	double b2 = lineB.a.x - lineB.b.x;
-	double c2 = a2 * lineB.a.x + b2 * lineB.a.y;
-	
-	double delta = a1 * b2 - a2 * b1;
-	if(delta == 0) {
-	    return Optional.empty();
-	}
-	return Optional.of(new Coord2d((float) ((b2 * c1 - b1 * c2) / delta), (float) ((a1 * c2 - a2 * c1) / delta)));
-    }
-    
-    private static final Pattern RESID = Pattern.compile(".*\\[([^,]*),?.*]");
-    private static final Map<String, String> customNames = new HashMap<>();
-    private static boolean customNamesInit = false;
-    
-    public static String prettyResName(String resname) {
-	tryInitCustomNames();
-	if(customNames.containsKey(resname)) {
-	    return customNames.get(resname);
-	}
-	Matcher m = RESID.matcher(resname);
-	if(m.matches()) {
-	    resname = m.group(1);
-	}
-	int k = resname.lastIndexOf("/");
-	resname = resname.substring(k + 1);
-	resname = resname.substring(0, 1).toUpperCase() + resname.substring(1);
-	return resname;
-    }
-    
-    private static void tryInitCustomNames() {
-	if(customNamesInit) {return;}
-	customNamesInit = true;
-	try {
-	    Gson gson = new GsonBuilder().create();
-	    customNames.putAll(gson.fromJson(Config.loadJarFile("tile_names.json"), new TypeToken<Map<String, String>>() {
-	    }.getType()));
-	} catch (Exception ignored) {}
-    }
-    
-    public static boolean checkbit(int target, int index) {
-	return (target & (1 << index)) != 0;
-    }
-
-    public static int setbit(int target, int index, boolean value) {
-	if(value) {
-	    return target | (1 << index);
-	} else {
-	    return target & ~(1 << index);
-	}
-    }
-    
-    public static double round(double a, int order){
-	double o = Math.pow(10, order);
-	return Math.round(o * a) / o;
-    }
-    
-    @SuppressWarnings("unchecked")
-    public static <T extends Number> T num2value(Number n, Class<T> type) {
-	if(Integer.class.equals(type)) {
-	    return (T) new Integer(n.intValue());
-	} else if(Long.class.equals(type)) {
-	    return (T) new Long(n.longValue());
-	}
-	return (T) new Float(n.floatValue());
-    }
-    
-    @SafeVarargs
-    public static <T> Optional<T> chainOptionals(Supplier<Optional<T>>... items) {
-	return Arrays.stream(items).map(Supplier::get)
-	    .filter(Optional::isPresent)
-	    .map(Optional::get)
-	    .findFirst();
-    }
-
     static {
 	Console.setscmd("die", new Console.Command() {
 		public void run(Console cons, String[] args) {
@@ -2528,5 +2396,21 @@ public class Utils {
 		    System.gc();
 		}
 	    });
+    }
+
+    public static <T> Iterator<T> circularIterator(List<T> list) {
+	return new Iterator<T>() {
+	    int i = 0;
+
+	    @Override
+	    public boolean hasNext() {
+		return !list.isEmpty();
+	    }
+
+	    @Override
+	    public T next() {
+		return hasNext() ? list.get(i++ % list.size()) : null;
+	    }
+	};
     }
 }

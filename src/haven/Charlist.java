@@ -30,7 +30,7 @@ import java.awt.Color;
 import java.util.*;
 
 public class Charlist extends Widget {
-    public static final Tex bg = Resource.loadtex("gfx/hud/avakort");
+    public static final Coord bsz = UI.scale(289, 96);
     public static final Text.Furnace tf = new PUtils.BlurFurn(new PUtils.TexFurn(new Text.Foundry(Text.fraktur, 20).aa(true), Window.ctex), UI.scale(2), UI.scale(2), Color.BLACK);
     public static final int margin = UI.scale(6);
     public static final int btnw = UI.scale(100);
@@ -44,7 +44,7 @@ public class Charlist extends Widget {
     @RName("charlist")
     public static class $_ implements Factory {
 	public Widget create(UI ui, Object[] args) {
-	    return(new Charlist((Integer)args[0]));
+	    return(new Charlist(Utils.iv(args[0])));
 	}
     }
 
@@ -52,13 +52,13 @@ public class Charlist extends Widget {
 	super(Coord.z);
 	this.height = height;
 	setcanfocus(true);
-	sau = adda(new IButton("gfx/hud/buttons/csau", "u", "d", "o"), bg.sz().x / 2, 0, 0.5, 0)
+	sau = adda(new IButton("gfx/hud/buttons/csau", "u", "d", "o"), bsz.x / 2, 0, 0.5, 0)
 	    .action(() -> scroll(-1));
 	list = add(new Boxlist(height), 0, sau.c.y + sau.sz.y + margin);
-	sad = adda(new IButton("gfx/hud/buttons/csad", "u", "d", "o"), bg.sz().x / 2, list.c.y + list.sz.y + margin, 0.5, 0)
+	sad = adda(new IButton("gfx/hud/buttons/csad", "u", "d", "o"), bsz.x / 2, list.c.y + list.sz.y + margin, 0.5, 0)
 	    .action(() -> scroll(1));
 	sau.hide(); sad.hide();
-	resize(new Coord(bg.sz().x, sad.c.y + sad.sz.y));
+	resize(new Coord(bsz.x, sad.c.y + sad.sz.y));
     }
 
     public static class Char {
@@ -84,7 +84,7 @@ public class Charlist extends Widget {
 	public final Avaview ava;
 
 	public Charbox(Char chr) {
-	    super(bg.sz());
+	    super(bsz);
 	    this.chr = chr;
 	    Widget avaf = adda(Frame.with(this.ava = new Avaview(Avaview.dasz, -1, "avacam"), false), Coord.of(sz.y / 2), 0.5, 0.5);
 	    add(new Img(tf.render(chr.name).tex()), avaf.pos("ur").adds(5, 0));
@@ -103,28 +103,27 @@ public class Charlist extends Widget {
 	public void draw(GOut g) {
 	    if(list.sel == chr)
 		g.chcolor(255, 255, 128, 255);
-	    g.image(bg, Coord.z);
+	    ISBox.box.draw(g, Coord.z, sz);
 	    g.chcolor();
 	    super.draw(g);
 	}
 
-	public boolean mousedown(Coord c, int button) {
-	    super.mousedown(c, button);
+	public boolean mousedown(MouseDownEvent ev) {
 	    list.change(chr);
-	    return(true);
+	    return(super.mousedown(ev));
 	}
     }
 
     public class Boxlist extends SListBox<Char, Charbox> {
 	public Boxlist(int h) {
-	    super(Coord.of(bg.sz().x, ((bg.sz().y + margin) * h) - margin), bg.sz().y, margin);
+	    super(Coord.of(bsz.x, ((bsz.y + margin) * h) - margin), bsz.y, margin);
 	}
 
 	protected List<Char> items() {return(chars);}
 	protected Charbox makeitem(Char chr, int idx, Coord sz) {return(new Charbox(chr));}
 
 	protected void drawslot(GOut g, Char item, int idx, Area area) {}
-	public boolean mousewheel(Coord c, int amount) {return(false);}
+	public boolean mousewheel(MouseWheelEvent ev) {return(false);}
 	protected boolean unselect(int button) {return(false);}
 	protected boolean autoscroll() {return(false);}
 
@@ -151,6 +150,18 @@ public class Charlist extends Widget {
 	}, UI.scale(100, 553));
     }
 
+    @Override
+    protected void attached() {
+	super.attached();
+	try {
+	    CharacterInfo character = ui.sess.character;
+	    if (character != null) {
+		character.updateAccountStatus(parent.children(Img.class));
+	    }
+	} catch (Exception ignore) {
+	}
+    }
+
     private int scrolltgt = -1;
     private double scrollval = -1;
     public void tick(double dt) {
@@ -170,18 +181,11 @@ public class Charlist extends Widget {
     }
 
     public void scroll(int amount) {
-	scrolltgt = Utils.clip(((scrolltgt < 0) ? list.scrollval() : scrolltgt) + ((bg.sz().y + margin) * amount), list.scrollmin(), list.scrollmax());
+	scrolltgt = Utils.clip(((scrolltgt < 0) ? list.scrollval() : scrolltgt) + ((bsz.y + margin) * amount), list.scrollmin(), list.scrollmax());
     }
 
-    public boolean mousedown(Coord c, int button) {
-	boolean hit = false;
-	if(super.mousedown(c, button))
-	    return(true);
-	return(hit);
-    }
-
-    public boolean mousewheel(Coord c, int amount) {
-	scroll(amount);
+    public boolean mousewheel(MouseWheelEvent ev) {
+	scroll(ev.a);
 	return(true);
     }
 
@@ -196,7 +200,7 @@ public class Charlist extends Widget {
 		if(rawdesc.length > 3) {
 		    Object[] rawposes = (Object[])rawdesc[3];
 		    for(int i = 0; i < rawposes.length; i += 2)
-			poses.add(new ResData(ui.sess.getres((Integer)rawposes[i]), new MessageBuf((byte[])rawposes[i + 1])));
+			poses.add(new ResData(ui.sess.getresv(rawposes[i]), new MessageBuf((byte[])rawposes[i + 1])));
 		}
 		c.ava(desc, map, poses);
 	    }
@@ -218,7 +222,7 @@ public class Charlist extends Widget {
 	    if(rawdesc.length > 3) {
 		Object[] rawposes = (Object[])rawdesc[3];
 		for(int i = 0; i < rawposes.length; i += 2)
-		    poses.add(new ResData(ui.sess.getres((Integer)rawposes[i]), new MessageBuf((byte[])rawposes[i + 1])));
+		    poses.add(new ResData(ui.sess.getresv(rawposes[i]), new MessageBuf((byte[])rawposes[i + 1])));
 	    }
 	    synchronized(chars) {
 		for(Char c : chars) {
@@ -229,7 +233,7 @@ public class Charlist extends Widget {
 		}
 	    }
 	} else if(msg == "biggu") {
-	    int id = (Integer)args[0];
+	    int id = Utils.iv(args[0]);
 	    if(id < 0) {
 		avalink = null;
 	    } else {
@@ -244,20 +248,20 @@ public class Charlist extends Widget {
 	}
     }
 
-    public boolean keydown(java.awt.event.KeyEvent ev) {
-	if(ev.getKeyCode() == ev.VK_UP) {
+    public boolean keydown(KeyDownEvent ev) {
+	if(ev.code == ev.awt.VK_UP) {
 	    if(!chars.isEmpty())
 		list.change(chars.get(Math.max(chars.indexOf(list.sel) - 1, 0)));
 	    return(true);
-	} else if(ev.getKeyCode() == ev.VK_DOWN) {
+	} else if(ev.code == ev.awt.VK_DOWN) {
 	    if(!chars.isEmpty())
 		list.change(chars.get(Math.min(chars.indexOf(list.sel) + 1, chars.size() - 1)));
 	    return(true);
-	} else if(ev.getKeyCode() == ev.VK_ENTER) {
+	} else if(ev.code == ev.awt.VK_ENTER) {
 	    if(list.sel != null)
 		wdgmsg("play", list.sel.name);
 	    return(true);
 	}
-	return(false);
+	return(super.keydown(ev));
     }
 }

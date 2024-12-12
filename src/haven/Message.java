@@ -27,6 +27,7 @@
 package haven;
 
 import java.util.*;
+import java.util.function.*;
 import dolda.coe.*;
 import java.awt.Color;
 
@@ -60,6 +61,9 @@ public abstract class Message {
     public static final int T_SNORM32 = 29;
     public static final int T_UNORM32 = 30;
     public static final int T_MNORM32 = 31;
+    public static final int T_MAP = 32;
+    public static final int T_LONG = 33;
+    public static final int T_RESSPEC = 34;
 
     private final static byte[] empty = new byte[0];
     public int rh = 0, rt = 0, wh = 0, wt = 0;
@@ -149,6 +153,9 @@ public abstract class Message {
     public long int64() {
 	int off = rget(8);
 	return(Utils.int64d(rbuf, off));
+    }
+    public UID uniqid() {
+	return(UID.of(int64()));
     }
     public String string() {
 	int l = 0;
@@ -261,90 +268,106 @@ public abstract class Message {
 	return(uint32() / 0x100000000p0);
     }
 
-    public Object[] list() {
+    public Object tto0(int type, Function<Object, ? extends Object> mapper) {
+	switch(type) {
+	case T_INT:
+	    return(int32());
+	case T_STR:
+	    return(string());
+	case T_COORD:
+	    return(coord());
+	case T_UINT8:
+	    return(uint8());
+	case T_UINT16:
+	    return(uint16());
+	case T_INT8:
+	    return(int8());
+	case T_INT16:
+	    return(int16());
+	case T_COLOR:
+	    return(color());
+	case T_FCOLOR:
+	    return(fcolor());
+	case T_TTOL:
+	    return(list(mapper));
+	case T_NIL:
+	    return(null);
+	case T_UID:
+	    return(UID.of(int64()));
+	case T_BYTES:
+	    int len = uint8();
+	    if((len & 128) != 0)
+		len = int32();
+	    return(bytes(len));
+	case T_FLOAT8:
+	    return(MiniFloat.decode((byte)int8()));
+	case T_FLOAT16:
+	    return(HalfFloat.decode((short)int16()));
+	case T_FLOAT32:
+	    return(float32());
+	case T_FLOAT64:
+	    return(float64());
+	case T_FCOORD32:
+	    return(new Coord2d(float32(), float32()));
+	case T_FCOORD64:
+	    return(new Coord2d(float64(), float64()));
+	case T_SNORM8:  return( NormNumber.decsnorm8(this));
+	case T_SNORM16: return(NormNumber.decsnorm16(this));
+	case T_SNORM32: return(NormNumber.decsnorm32(this));
+	case T_UNORM8:  return( NormNumber.decunorm8(this));
+	case T_UNORM16: return(NormNumber.decunorm16(this));
+	case T_UNORM32: return(NormNumber.decunorm32(this));
+	case T_MNORM8:  return( NormNumber.decmnorm8(this));
+	case T_MNORM16: return(NormNumber.decmnorm16(this));
+	case T_MNORM32: return(NormNumber.decmnorm32(this));
+	case T_MAP:
+	    return(map(mapper));
+	case T_LONG:
+	    return(int64());
+	case T_RESSPEC:
+	    return(new Resource.Spec(null, string(), uint16()));
+	default:
+	    throw(new FormatError("unknown type tag: " + type).msg(this));
+	}
+    }
+
+    public Object tto(int type, Function<Object, ? extends Object> mapper) {
+	Object ret = tto0(type, mapper);
+	if(mapper != null)
+	    ret = mapper.apply(ret);
+	return(ret);
+    }
+    public Object tto(int type) {return(tto(type, null));}
+
+    public Object tto(Function<Object, ? extends Object> mapper) {
+	return(tto(uint8(), mapper));
+    }
+    public Object tto() {return(tto(null));}
+
+    public Object[] list(Function<Object, ? extends Object> mapper) {
 	ArrayList<Object> ret = new ArrayList<Object>();
-	list: while(true) {
+	while(true) {
 	    if(eom())
 		break;
 	    int t = uint8();
-	    switch(t) {
-	    case T_END:
-		break list;
-	    case T_INT:
-		ret.add(int32());
+	    if(t == T_END)
 		break;
-	    case T_STR:
-		ret.add(string());
-		break;
-	    case T_COORD:
-		ret.add(coord());
-		break;
-	    case T_UINT8:
-		ret.add(uint8());
-		break;
-	    case T_UINT16:
-		ret.add(uint16());
-		break;
-	    case T_INT8:
-		ret.add(int8());
-		break;
-	    case T_INT16:
-		ret.add(int16());
-		break;
-	    case T_COLOR:
-		ret.add(color());
-		break;
-	    case T_FCOLOR:
-		ret.add(fcolor());
-		break;
-	    case T_TTOL:
-		ret.add(list());
-		break;
-	    case T_NIL:
-		ret.add(null);
-		break;
-	    case T_UID:
-		ret.add(UID.of(int64()));
-		break;
-	    case T_BYTES:
-		int len = uint8();
-		if((len & 128) != 0)
-		    len = int32();
-		ret.add(bytes(len));
-		break;
-	    case T_FLOAT8:
-		ret.add(float8());
-		break;
-	    case T_FLOAT16:
-		ret.add(float16());
-		break;
-	    case T_FLOAT32:
-		ret.add(float32());
-		break;
-	    case T_FLOAT64:
-		ret.add(float64());
-		break;
-	    case T_FCOORD32:
-		ret.add(new Coord2d(float32(), float32()));
-		break;
-	    case T_FCOORD64:
-		ret.add(new Coord2d(float64(), float64()));
-		break;
-	    case T_SNORM8:  ret.add( NormNumber.decsnorm8(this)); break;
-	    case T_SNORM16: ret.add(NormNumber.decsnorm16(this)); break;
-	    case T_SNORM32: ret.add(NormNumber.decsnorm32(this)); break;
-	    case T_UNORM8:  ret.add( NormNumber.decunorm8(this)); break;
-	    case T_UNORM16: ret.add(NormNumber.decunorm16(this)); break;
-	    case T_UNORM32: ret.add(NormNumber.decunorm32(this)); break;
-	    case T_MNORM8:  ret.add( NormNumber.decmnorm8(this)); break;
-	    case T_MNORM16: ret.add(NormNumber.decmnorm16(this)); break;
-	    case T_MNORM32: ret.add(NormNumber.decmnorm32(this)); break;
-	    default:
-		throw(new FormatError("Encountered unknown type " + t + " in TTO list.").msg(this));
-	    }
+	    ret.add(tto(t, mapper));
 	}
 	return(ret.toArray());
     }
+    public Object[] list() {return(list(null));}
+
+    public Map<Object, Object> map(Function<Object, ? extends Object> mapper) {
+	Object[] list = list(mapper);
+	if((list.length % 2) != 0)
+	    throw(new FormatError("map-list length not a multiple of two"));
+	Map<Object, Object> ret = new HashMap<>();
+	for(int i = 0; i < list.length; i += 2)
+	    ret.put(list[i], list[i + 1]);
+	return(ret);
+    }
+    public Map<Object, Object> map() {return(map(null));}
 
     public abstract void overflow(int min);
 
@@ -404,6 +427,9 @@ public abstract class Message {
 	Utils.int64e(num, wbuf, off);
 	return(this);
     }
+    public Message adduniqid(UID uid) {
+	return(addint64(uid.bits));
+    }
     public Message addstring2(String str) {
 	addbytes(str.getBytes(Utils.utf8));
 	return(this);
@@ -443,82 +469,126 @@ public abstract class Message {
 	return(this);
     }
 
-    public Message addlist(Object... args) {
-	for(Object o : args) {
-	    if(o == null) {
-		adduint8(T_NIL);
-	    } else if(o instanceof Integer) {
+    public Message addtto(Object o) {
+	if(o == null) {
+	    adduint8(T_NIL);
+	} else if((o instanceof Byte) || (o instanceof Short) || (o instanceof Integer) || (o instanceof Long)) {
+	    long v = ((Number)o).longValue();
+	    if((v >= 0) && (v < 256)) {
+		adduint8(T_UINT8);
+		adduint8((int)v);
+	    } else if((v >= 0) && (v < 65536)) {
+		adduint8(T_UINT16);
+		adduint16((int)v);
+	    } else if((v >= -128) && (v < 0)) {
+		adduint8(T_INT8);
+		addint8((byte)v);
+	    } else if((v >= -32768) && (v < 0)) {
+		adduint8(T_INT16);
+		addint16((short)v);
+	    } else if((v >= Integer.MIN_VALUE) && (v <= Integer.MAX_VALUE)) {
 		adduint8(T_INT);
-		addint32(((Integer)o).intValue());
-	    } else if(o instanceof String) {
-		adduint8(T_STR);
-		addstring((String)o);
-	    } else if(o instanceof Coord) {
-		adduint8(T_COORD);
-		addcoord((Coord)o);
-	    } else if(o instanceof byte[]) {
-		byte[] b = (byte[])o;
-		adduint8(T_BYTES);
-		if(b.length < 128) {
-		    adduint8(b.length);
-		} else {
-		    adduint8(0x80);
-		    addint32(b.length);
-		}
-		addbytes(b);
-	    } else if(o instanceof Color) {
-		adduint8(T_COLOR);
-		addcolor((Color)o);
-	    } else if(o instanceof FColor) {
-		adduint8(T_FCOLOR);
-		addfcolor((FColor)o);
-	    } else if(o instanceof Float) {
-		adduint8(T_FLOAT32);
-		addfloat32(((Float)o).floatValue());
-	    } else if(o instanceof Double) {
-		adduint8(T_FLOAT64);
-		addfloat64(((Double)o).doubleValue());
-	    } else if(o instanceof UID) {
-		adduint8(T_UID);
-		addint64(((UID)o).longValue());
-	    } else if(o instanceof NormNumber.SNorm8) {
-		adduint8(T_SNORM8);
-		addint8(((NormNumber.SNorm8)o).val);
-	    } else if(o instanceof NormNumber.UNorm8) {
-		adduint8(T_UNORM8);
-		adduint8(((NormNumber.UNorm8)o).val & 0xff);
-	    } else if(o instanceof NormNumber.MNorm8) {
-		adduint8(T_MNORM8);
-		adduint8(((NormNumber.MNorm8)o).val & 0xff);
-	    } else if(o instanceof NormNumber.SNorm16) {
-		adduint8(T_SNORM16);
-		addint16(((NormNumber.SNorm16)o).val);
-	    } else if(o instanceof NormNumber.UNorm16) {
-		adduint8(T_UNORM16);
-		adduint16(((NormNumber.UNorm16)o).val & 0xffff);
-	    } else if(o instanceof NormNumber.MNorm16) {
-		adduint8(T_MNORM16);
-		adduint16(((NormNumber.MNorm16)o).val & 0xffff);
-	    } else if(o instanceof NormNumber.SNorm32) {
-		adduint8(T_SNORM32);
-		addint32(((NormNumber.SNorm32)o).val);
-	    } else if(o instanceof NormNumber.UNorm32) {
-		adduint8(T_UNORM32);
-		addint32(((NormNumber.UNorm32)o).val);
-	    } else if(o instanceof NormNumber.MNorm32) {
-		adduint8(T_MNORM32);
-		adduint32(((NormNumber.MNorm32)o).val);
-	    } else if(o instanceof Coord2d) {
-		adduint8(T_FCOORD64);
-		addfloat64(((Coord2d)o).x);
-		addfloat64(((Coord2d)o).y);
-	    } else if(o instanceof Object[]) {
-		adduint8(T_TTOL);
-		addlist((Object[])o);
-		adduint8(T_END);
+		addint32((int)v);
 	    } else {
-		throw(new RuntimeException("Cannot encode a " + o.getClass() + " as TTO"));
+		adduint8(T_LONG);
+		addint64(v);
 	    }
+	} else if(o instanceof String) {
+	    adduint8(T_STR);
+	    addstring((String)o);
+	} else if(o instanceof Coord) {
+	    adduint8(T_COORD);
+	    addcoord((Coord)o);
+	} else if(o instanceof byte[]) {
+	    byte[] b = (byte[])o;
+	    adduint8(T_BYTES);
+	    if(b.length < 128) {
+		adduint8(b.length);
+	    } else {
+		adduint8(0x80);
+		addint32(b.length);
+	    }
+	    addbytes(b);
+	} else if(o instanceof Color) {
+	    adduint8(T_COLOR);
+	    addcolor((Color)o);
+	} else if(o instanceof FColor) {
+	    adduint8(T_FCOLOR);
+	    addfcolor((FColor)o);
+	} else if(o instanceof MiniFloat) {
+	    adduint8(T_FLOAT8);
+	    addint8(((MiniFloat)o).bits);
+	} else if(o instanceof HalfFloat) {
+	    adduint8(T_FLOAT16);
+	    addint16(((HalfFloat)o).bits);
+	} else if(o instanceof Float) {
+	    adduint8(T_FLOAT32);
+	    addfloat32(((Float)o).floatValue());
+	} else if(o instanceof Double) {
+	    adduint8(T_FLOAT64);
+	    addfloat64(((Double)o).doubleValue());
+	} else if(o instanceof UID) {
+	    adduint8(T_UID);
+	    addint64(((UID)o).longValue());
+	} else if(o instanceof NormNumber.SNorm8) {
+	    adduint8(T_SNORM8);
+	    addint8(((NormNumber.SNorm8)o).val);
+	} else if(o instanceof NormNumber.UNorm8) {
+	    adduint8(T_UNORM8);
+	    adduint8(((NormNumber.UNorm8)o).val & 0xff);
+	} else if(o instanceof NormNumber.MNorm8) {
+	    adduint8(T_MNORM8);
+	    adduint8(((NormNumber.MNorm8)o).val & 0xff);
+	} else if(o instanceof NormNumber.SNorm16) {
+	    adduint8(T_SNORM16);
+	    addint16(((NormNumber.SNorm16)o).val);
+	} else if(o instanceof NormNumber.UNorm16) {
+	    adduint8(T_UNORM16);
+	    adduint16(((NormNumber.UNorm16)o).val & 0xffff);
+	} else if(o instanceof NormNumber.MNorm16) {
+	    adduint8(T_MNORM16);
+	    adduint16(((NormNumber.MNorm16)o).val & 0xffff);
+	} else if(o instanceof NormNumber.SNorm32) {
+	    adduint8(T_SNORM32);
+	    addint32(((NormNumber.SNorm32)o).val);
+	} else if(o instanceof NormNumber.UNorm32) {
+	    adduint8(T_UNORM32);
+	    addint32(((NormNumber.UNorm32)o).val);
+	} else if(o instanceof NormNumber.MNorm32) {
+	    adduint8(T_MNORM32);
+	    adduint32(((NormNumber.MNorm32)o).val);
+	} else if(o instanceof Coord2d) {
+	    adduint8(T_FCOORD64);
+	    addfloat64(((Coord2d)o).x);
+	    addfloat64(((Coord2d)o).y);
+	} else if(o instanceof Resource.Named) {
+	    adduint8(T_RESSPEC);
+	    addstring(((Resource.Named)o).name);
+	    adduint16(((Resource.Named)o).ver);
+	} else if(o instanceof Object[]) {
+	    adduint8(T_TTOL);
+	    addlist((Object[])o);
+	    adduint8(T_END);
+	} else if(o instanceof Map) {
+	    adduint8(T_MAP);
+	    addmap((Map<?, ?>)o);
+	    adduint8(T_END);
+	} else {
+	    throw(new RuntimeException("Cannot encode a " + o.getClass() + " as TTO"));
+	}
+	return(this);
+    }
+
+    public Message addlist(Object... args) {
+	for(Object o : args)
+	    addtto(o);
+	return(this);
+    }
+
+    public Message addmap(Map<?, ?> map) {
+	for(Map.Entry<?, ?> e : map.entrySet()) {
+	    addtto(e.getKey());
+	    addtto(e.getValue());
 	}
 	return(this);
     }

@@ -1,6 +1,7 @@
 package haven.rx;
 
 import haven.FlowerMenu;
+import haven.Gob;
 import haven.Pair;
 import haven.Window;
 import rx.Subscription;
@@ -27,6 +28,8 @@ public class Reactor {
     
     /** Publishes various events */
     public final static PublishSubject<Event> EVENTS = PublishSubject.create();
+    /** Publishes right-clicks on gobs */
+    public final static PublishSubject<Gob> GOB_INTERACT = PublishSubject.create();
     
     public static void event(String name) {
         EVENTS.onNext(new Event(name));

@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 
 <project name="hafen" default="deftgt">
+  <property file="build.properties" />
   <property name="ext-lib-base" value="http://www.havenandhearth.com/java" />
 
   <target name="build-env">
@@ -58,20 +59,39 @@
   <target name="extlib-env">
     <mkdir dir="lib/ext" />
     <available property="extlib/has-jogl" file="lib/ext/jogl/has-jogl" />
+    <available property="extlib/has-lwjgl-base" file="lib/ext/lwjgl/has-lwjgl-base" />
+    <available property="extlib/has-lwjgl-gl" file="lib/ext/lwjgl/has-lwjgl-gl" />
+    <available property="extlib/has-steamworks" file="lib/ext/steamworks/has-steamworks" />
   </target>
 
   <target name="extlib/jogl" depends="extlib-env" unless="extlib/has-jogl">
     <extlib name="jogl" path="lib/ext/jogl" url="${ext-lib-base}/jogl/current" />
   </target>
 
+  <target name="extlib/lwjgl-base" depends="extlib-env" unless="extlib/has-lwjgl-base">
+    <extlib name="lwjgl-base" path="lib/ext/lwjgl" url="${ext-lib-base}/lwjgl/current/lwjgl" />
+  </target>
 
-  <target name="hafen-client" depends="build-env, extlib/jogl">
+  <target name="extlib/lwjgl-gl" depends="extlib-env, extlib/lwjgl-base" unless="extlib/has-lwjgl-gl">
+    <extlib name="lwjgl-gl" path="lib/ext/lwjgl" url="${ext-lib-base}/lwjgl/current/lwjgl-opengl" />
+  </target>
+
+  <target name="extlib/steamworks" depends="extlib-env" unless="extlib/has-steamworks">
+    <extlib name="steamworks" path="lib/ext/steamworks" url="${ext-lib-base}/steamworks/current" />
+  </target>
+
+
+  <target name="hafen-client" depends="build-env, extlib/jogl, extlib/lwjgl-gl, extlib/steamworks">
     <javac srcdir="src" destdir="build/classes" debug="on"
-	   source="1.8" target="1.8" includeantruntime="no"
+	   source="1.8" target="1.8" release="8" includeantruntime="no"
 	   bootclasspath="${boot-classpath}">
       <classpath>
 	<pathelement path="lib/ext/jogl/jogl-all.jar" />
 	<pathelement path="lib/ext/jogl/gluegen-rt.jar" />
+	<pathelement path="lib/ext/lwjgl/lwjgl-fat.jar" />
+	<pathelement path="lib/ext/lwjgl/lwjgl-awt.jar" />
+	<pathelement path="lib/ext/lwjgl/lwjgl-opengl-fat.jar" />
+	<pathelement path="lib/ext/steamworks/steamworks4j.jar" />
 	<pathelement path="lib/jglob.jar" />
 	<pathelement path="lib/gson-2.8.6.jar" />
         <pathelement path="lib/rxjava-1.1.5.jar" />
@@ -124,21 +144,25 @@
       <arg line="-jar resources/LayerUtil.jar -re resources/src/remote resources/compiled/res-preload" />
     </exec>
     <jar destfile="build/client-res.jar" update="true">
-      <fileset dir="resources/pre-compiled" />
       <fileset dir="resources/compiled" />
       <fileset dir="resources" includes="item_data/**"/>
       <file file="etc/radar.json"/>
+      <file file="etc/gob_contents.json5"/>
       <file file="etc/gob_path.json"/>
       <file file="etc/gob_radius.json"/>
       <file file="etc/autochoose.json"/>
       <file file="etc/automark.json5"/>
       <file file="etc/containers.json5"/>
-      <file file="etc/tile_names.json"/>
+      <file file="etc/res_names.json"/>
       <file file="etc/tile_highlight.json"/>
+      <file file="etc/treatments.json5"/>
+      <file file="etc/ingredients.json"/>
+      <file file="etc/elixirs.json"/>
+      <file file="etc/all_ingredients.json"/>
+      <file file="etc/all_effects.json"/>
+      <file file="etc/combos.json"/>
       <fileset dir="." includes="i10n/**/**.json"/>
     </jar>
-    <copy file="lib/ext/builtin-res.jar" todir="build"/>
-    <copy file="lib/ext/hafen-res.jar" todir="build"/>
   </target>
 
   <target name="jar" depends="hafen-client, buildinfo, lib-classes">
@@ -148,7 +172,7 @@
       <fileset file="changelog.txt" />
       <manifest>
 	<attribute name="Main-Class" value="haven.MainFrame" />
-	<attribute name="Class-Path" value="jogl-all.jar gluegen-rt.jar client-res.jar builtin-res.jar hafen-res.jar" />
+	<attribute name="Class-Path" value="jogl-all.jar gluegen-rt.jar lwjgl-fat.jar lwjgl-awt.jar client-res.jar lwjgl-opengl-fat.jar steamworks4j.jar builtin-res.jar hafen-res.jar" />
       </manifest>
     </jar>
     <chmod file="build/hafen.jar" perm="a+x" />
@@ -166,7 +190,7 @@
     <fail unless="lib-builtin-jar" message="builtin-res.jar not available" />
   </target>
 
-  <target name="jars" depends="build-env, jar, extlib/jogl, resources">
+  <target name="jars" depends="build-env, jar, extlib/jogl, extlib/lwjgl-gl, extlib/steamworks, resources">
     <copy todir="build" failonerror="false" quiet="true">
       <fileset dir="lib">
 	<include name="builtin-res.jar" />
@@ -174,26 +198,27 @@
       </fileset>
     </copy>
     <copy todir="build">
-      <fileset dir="lib/ext/jogl">
-	<include name="*.jar" />
-      </fileset>
+      <fileset dir="lib/ext/jogl"><include name="*.jar" /></fileset>
+      <fileset dir="lib/ext/lwjgl"><include name="*.jar" /></fileset>
+      <fileset dir="lib/ext/steamworks"><include name="*.jar" /></fileset>
     </copy>
     <copy file="local-config.properties" tofile="build/haven-config.properties" failonerror="false" quiet="true" />
   </target>
 
-  <target name="bin" depends="jar, extlib/jogl, res-jar">
+  <target name="bin" depends="jar, extlib/jogl, extlib/lwjgl-gl, extlib/steamworks, res-jar, resources">
     <mkdir dir="bin" />
     <copy todir="bin">
       <fileset dir="build">
 	<include name="hafen.jar" />
+	<include name="client-res.jar" />
       </fileset>
       <fileset dir="lib/ext">
 	<include name="hafen-res.jar" />
 	<include name="builtin-res.jar" />
       </fileset>
-      <fileset dir="lib/ext/jogl">
-	<include name="*.jar" />
-      </fileset>
+      <fileset dir="lib/ext/jogl"><include name="*.jar" /></fileset>
+      <fileset dir="lib/ext/lwjgl"><include name="*.jar" /></fileset>
+      <fileset dir="lib/ext/steamworks"><include name="*.jar" /></fileset>
     </copy>
     <copy file="etc/ansgar-config.properties" tofile="bin/haven-config.properties" />
     <chmod file="bin/hafen.jar" perm="a+x" />
@@ -219,8 +244,24 @@
   </target>
 
   <target name="clean-assets">
-    <delete dir="resources/classes" />
+    <delete includeEmptyDirs="true">
+      <fileset dir="resources/classes" includes="**/*" excludes="placeholder" />
+    </delete>
     <delete dir="resources/compiled" />
     <delete file="build/client-res.jar" />
   </target>
+
+  <target name="clean-builtin-assets">
+    <delete file="bin/hafen-res.jar" />
+    <delete file="bin/builtin-res.jar" />
+  </target>
+
+  <target name="update-res-sources" depends="clean-code, jar">
+    <delete dir="resources/loftar-res-sources"/>
+    <mkdir dir="resources/loftar-res-sources"/>
+    <exec executable="java" dir="build" failifexecutionfails="true">
+      <arg line="-cp hafen.jar me.ender.ResSourceUpdater"/>
+    </exec>
+  </target>
+  
 </project>

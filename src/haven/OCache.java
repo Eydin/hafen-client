@@ -27,12 +27,14 @@
 package haven;
 
 import java.util.*;
+import java.util.List;
 import java.util.function.Consumer;
 import java.lang.annotation.*;
 import java.lang.reflect.*;
 import haven.render.Render;
 import java.util.stream.Stream;
 import haven.render.*;
+import haven.res.gfx.fx.msrad.MSRad;
 
 public class OCache implements Iterable<Gob> {
     public static final int OD_REM = 0;
@@ -50,7 +52,7 @@ public class OCache implements Iterable<Gob> {
     public static final int OD_OVERLAY = 12;
     /* public static final int OD_AUTH = 13; -- Removed */
     public static final int OD_HEALTH = 14;
-    public static final int OD_BUDDY = 15;
+    /* public static final int OD_BUDDY = 15; -- Removed */
     public static final int OD_CMPPOSE = 16;
     public static final int OD_CMPMOD = 17;
     public static final int OD_CMPEQU = 18;
@@ -61,10 +63,11 @@ public class OCache implements Iterable<Gob> {
     public static final Coord2d posres = Coord2d.of(0x1.0p-10, 0x1.0p-10).mul(11, 11);
     /* XXX: Use weak refs */
     private Collection<Collection<Gob>> local = new LinkedList<Collection<Gob>>();
-    private HashMultiMap<Long, Gob> objs = new HashMultiMap<Long, Gob>();
+    private MultiMap<Long, Gob> objs = new HashMultiMap<Long, Gob>();
     private Glob glob;
     private final Collection<ChangeCallback> cbs = new WeakList<ChangeCallback>();
     public final PathVisualizer paths = new PathVisualizer();
+    private final List<Disposable> disposables = new LinkedList<>();
 
     public interface ChangeCallback {
 	public void added(Gob ob);
@@ -73,12 +76,53 @@ public class OCache implements Iterable<Gob> {
 
     public OCache(Glob glob) {
 	this.glob = glob;
+	
 	callback(Gob.CHANGED);
-	CFG.DISPLAY_GOB_HITBOX.observe(cfg -> gobAction(Gob::hitboxUpdated));
-	CFG.DISPLAY_GOB_HITBOX_TOP.observe(cfg -> gobAction(Gob::hitboxUpdated));
-	CFG.HIDE_TREES.observe(cfg -> gobAction(Gob::visibilityUpdated));
-	CFG.DISPLAY_GOB_INFO.observe(cfg -> gobAction(Gob::infoUpdated));
-	CFG.SHOW_CONTAINER_FULLNESS.observe(cfg -> gobAction(Gob::infoUpdated));
+	disposables.add(CFG.DISPLAY_GOB_HITBOX.observe(cfg -> gobAction(Gob::hitboxUpdated)));
+	disposables.add(CFG.DISPLAY_GOB_HITBOX_TOP.observe(cfg -> gobAction(Gob::hitboxUpdated)));
+	disposables.add(CFG.DISPLAY_GOB_HITBOX_FILLED.observe(cfg -> gobAction(Gob::hitboxUpdated)));
+	disposables.add(CFG.COLOR_HBOX_FILLED.observe(cfg -> gobAction(Gob::hitboxUpdated)));
+	disposables.add(CFG.COLOR_HBOX_SOLID.observe(cfg -> gobAction(Gob::hitboxUpdated)));
+	disposables.add(CFG.COLOR_HBOX_PASSABLE.observe(cfg -> gobAction(Gob::hitboxUpdated)));
+	disposables.add(CFG.HIDE_TREES.observe(cfg -> gobAction(Gob::visibilityUpdated)));
+	disposables.add(CFG.SKIP_HIDING_RADAR_TREES.observe(cfg -> gobAction(Gob::visibilityUpdated)));
+	disposables.add(CFG.DISPLAY_GOB_INFO.observe(cfg -> gobAction(Gob::infoUpdated)));
+	disposables.add(CFG.DISPLAY_GOB_INFO_DISABLED_PARTS.observe(cfg -> gobAction(Gob::infoUpdated)));
+	disposables.add(CFG.DISPLAY_GOB_INFO_TREE_ENABLED_PARTS.observe(cfg -> gobAction(Gob::infoUpdated)));
+	disposables.add(CFG.DISPLAY_GOB_INFO_TREE_HIDE_GROWING_PARTS.observe(cfg -> gobAction(Gob::infoUpdated)));
+	disposables.add(CFG.DISPLAY_GOB_INFO_TREE_SHOW_BIG.observe(cfg -> gobAction(Gob::infoUpdated)));
+	disposables.add(CFG.DISPLAY_GOB_INFO_TREE_SHOW_BIG_THRESHOLD.observe(cfg -> gobAction(Gob::infoUpdated)));
+	disposables.add(CFG.DISPLAY_GOB_INFO_SHORT.observe(cfg -> gobAction(Gob::infoUpdated)));
+	disposables.add(CFG.HIGHLIGHT_PARTY_IN_COMBAT.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.HIGHLIGHT_SELF_IN_COMBAT.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.HIGHLIGHT_ENEMY_IN_COMBAT.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.FLAT_TERRAIN.observe(cfg -> gobAction(Gob::markerUpdated)));
+	disposables.add(CFG.DISPLAY_AURA_SPEED_BUFF.observe(cfg -> gobAction(Gob::markerUpdated)));
+	disposables.add(CFG.DISPLAY_AURA_RABBIT.observe(cfg -> gobAction(Gob::markerUpdated)));
+	disposables.add(CFG.DISPLAY_AURA_CRITTERS.observe(cfg -> gobAction(Gob::markerUpdated)));
+	disposables.add(CFG.MARK_PARTY_IN_COMBAT.observe(cfg -> gobAction(Gob::markerUpdated)));
+	disposables.add(CFG.MARK_SELF_IN_COMBAT.observe(cfg -> gobAction(Gob::markerUpdated)));
+	disposables.add(CFG.MARK_ENEMY_IN_COMBAT.observe(cfg -> gobAction(Gob::markerUpdated)));
+	disposables.add(CFG.SHOW_CONTAINER_FULLNESS.observe(cfg -> gobAction(Gob::infoUpdated)));
+	disposables.add(CFG.SHOW_PROGRESS_COLOR.observe(cfg -> gobAction(Gob::infoUpdated)));
+	
+	disposables.add(CFG.COLOR_GOB_READY.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.COLOR_GOB_FULL.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.COLOR_GOB_EMPTY.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.COLOR_GOB_PARTY.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.COLOR_GOB_LEADER.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.COLOR_GOB_SELF.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.COLOR_GOB_IN_COMBAT.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.COLOR_GOB_COMBAT_TARGET.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.COLOR_GOB_SPEED_BUFF.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.COLOR_GOB_RABBIT.observe(cfg -> gobAction(Gob::colorUpdated)));
+	disposables.add(CFG.COLOR_GOB_CRITTERS.observe(cfg -> gobAction(Gob::colorUpdated)));
+    }
+    
+    public void destroy() {
+	disposables.forEach(Disposable::dispose);
+	disposables.clear();
+	cbs.clear();
     }
     
     public void gobAction(Consumer<Gob> action) {
@@ -225,6 +269,26 @@ public class OCache implements Iterable<Gob> {
 	return(objs.get(id));
     }
 
+    private final List<SquareRadiiOverlay> msols = new LinkedList<>();
+    public boolean dirtyMSOls = true;
+
+    /**Returns list of mine support overlays*/
+    public List<SquareRadiiOverlay> msols() {
+	if(!dirtyMSOls) {return msols;}
+	synchronized (msols) {
+	    dirtyMSOls = false;
+	    msols.clear();
+	    synchronized (this) {
+		for (Gob gob : objs.values()) {
+		    MSRad spr = gob.findsprol(MSRad.class);
+		    if(spr == null) {continue;}
+		    msols.add(spr.overlay);
+		}
+	    }
+	}
+	return msols;
+    }
+
     private java.util.concurrent.atomic.AtomicLong nextvirt = new java.util.concurrent.atomic.AtomicLong(-1);
     public class Virtual extends Gob {
 	public Virtual(Coord2d c, double a) {
@@ -256,7 +320,7 @@ public class OCache implements Iterable<Gob> {
     }
 
     public interface Delta {
-	public void apply(Gob gob, Message msg);
+	public void apply(Gob gob, AttrDelta msg);
 
 	public static Indir<Resource> getres(Gob gob, int id) {
 	    return(gob.glob.sess.getres(id));
@@ -286,16 +350,30 @@ public class OCache implements Iterable<Gob> {
 
     @DeltaType(OD_MOVE)
     public static class $move implements Delta {
-	public void apply(Gob g, Message msg) {
+	public void apply(Gob g, AttrDelta msg) {
 	    Coord2d c = msg.coord().mul(posres);
 	    double a = (msg.uint16() / 65536.0) * Math.PI * 2;
 	    g.move(c, a);
 	}
     }
 
+    public static class OlSprite implements Sprite.Mill<Sprite> {
+	public final Indir<Resource> res;
+	public Message sdt;
+
+	public OlSprite(Indir<Resource> res, Message sdt) {
+	    this.res = res;
+	    this.sdt = sdt;
+	}
+
+	public Sprite create(Sprite.Owner owner) {
+	    return(Sprite.create(owner, res.get(), sdt));
+	}
+    }
+
     @DeltaType(OD_OVERLAY)
     public static class $overlay implements Delta {
-	public void apply(Gob g, Message msg) {
+	public void apply(Gob g, AttrDelta msg) {
 	    int olidf = msg.int32();
 	    boolean prs = (olidf & 1) != 0;
 	    int olid = olidf >>> 1;
@@ -319,14 +397,24 @@ public class OCache implements Iterable<Gob> {
 		sdt = new MessageBuf(sdt);
 		Gob.Overlay nol = null;
 		if(ol == null) {
-		    g.addol(nol = new Gob.Overlay(g, olid, res, sdt), false);
-		} else if(!ol.sdt.equals(sdt)) {
-		    if(ol.spr instanceof Sprite.CUpd) {
+		    if(prs || (Gob.olidcmp(olid, g.lastolid) > 0)) {
+			nol = new Gob.Overlay(g, olid, new OlSprite(res, sdt));
+			nol.old = msg.old;
+			g.addol(nol, false);
+			if(!prs)
+			    g.lastolid = olid;
+		    }
+		} else {
+		    OlSprite os = (ol.sm instanceof OlSprite) ? (OlSprite)ol.sm : null;
+		    if((os != null) && Utils.eq(os.sdt, sdt)) {
+		    } else if((os != null) && (ol.spr instanceof Sprite.CUpd)) {
 			MessageBuf copy = new MessageBuf(sdt);
 			((Sprite.CUpd)ol.spr).update(copy);
-			ol.sdt = copy;
+			os.sdt = copy;
 		    } else {
-			g.addol(nol = new Gob.Overlay(g, olid, res, sdt), false);
+			nol = new Gob.Overlay(g, olid, new OlSprite(res, sdt));
+			nol.old = msg.old;
+			g.addol(nol, false);
 			ol.remove(false);
 		    }
 		}
@@ -346,7 +434,7 @@ public class OCache implements Iterable<Gob> {
 
     @DeltaType(OD_RESATTR)
     public static class $resattr implements Delta {
-	public void apply(Gob g, Message msg) {
+	public void apply(Gob g, AttrDelta msg) {
 	    Indir<Resource> resid = Delta.getres(g, msg.uint16());
 	    int len = msg.uint8();
 	    Message dat = (len > 0) ? new MessageBuf(msg.bytes(len)) : null;
@@ -357,7 +445,7 @@ public class OCache implements Iterable<Gob> {
 
     public class GobInfo {
 	public final long id;
-	public final LinkedList<PMessage> pending = new LinkedList<>();
+	public final LinkedList<AttrDelta> pending = new LinkedList<>();
 	public int frame;
 	public boolean nremoved, added, gremoved, virtual;
 	public Gob gob;
@@ -386,7 +474,7 @@ public class OCache implements Iterable<Gob> {
 		    }
 		}
 		while(true) {
-		    PMessage d;
+		    AttrDelta d;
 		    synchronized(this) {
 			if((d = pending.peek()) == null)
 			    break;
@@ -462,8 +550,9 @@ public class OCache implements Iterable<Gob> {
 
     public static class ObjDelta {
 	public int fl, frame;
+	public int initframe;
 	public long id;
-	public final List<PMessage> attrs = new LinkedList<>();
+	public final List<AttrDelta> attrs = new LinkedList<>();
 	public boolean rem = false;
 
 	public ObjDelta(int fl, long id, int frame) {
@@ -474,12 +563,30 @@ public class OCache implements Iterable<Gob> {
 	public ObjDelta() {}
     }
 
+    public static class AttrDelta extends PMessage {
+	public boolean old;
+
+	public AttrDelta(ObjDelta od, int type, Message blob, int len) {
+	    super(type, blob, len);
+	    this.old = ((od.fl & 4) != 0);
+	}
+
+	public AttrDelta(AttrDelta from) {
+	    super(from);
+	    this.old = from.old;
+	}
+
+	public AttrDelta clone() {
+	    return(new AttrDelta(this));
+	}
+    }
+
     public GobInfo receive(ObjDelta delta) {
 	if(delta.rem)
 	    return(netremove(delta.id, delta.frame - 1));
 	synchronized(netinfo) {
-	    if((delta.fl & 1) != 0)
-		netremove(delta.id, delta.frame - 1);
+	    if(delta.initframe > 0)
+		netremove(delta.id, delta.initframe - 1);
 	    GobInfo ng = netget(delta.id, delta.frame);
 	    if(ng != null) {
 		synchronized(ng) {

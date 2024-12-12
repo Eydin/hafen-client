@@ -40,7 +40,21 @@ public class IButton extends SIWidget {
     @RName("ibtn")
     public static class $_ implements Factory {
 	public Widget create(UI ui, Object[] args) {
-	    return(new IButton(Resource.loadsimg((String)args[0]), Resource.loadsimg((String)args[1])));
+	    int a = 0;
+	    Indir<Resource> up;
+	    if(args[0] instanceof String)
+		up = new Resource.Spec(Resource.local(), (String)args[a++]);
+	    else
+		up = ui.sess.getresv(args[a++]);
+	    Indir<Resource> down;
+	    if(args[1] instanceof String)
+		down = new Resource.Spec(Resource.local(), (String)args[a++]);
+	    else
+		down = ui.sess.getresv(args[a++]);
+	    Indir<Resource> hover = up;
+	    if(args.length > a)
+		hover = ui.sess.getresv(args[a++]);
+	    return(new IButton(up.get().flayer(Resource.imgc).scaled(), down.get().flayer(Resource.imgc).scaled(), hover.get().flayer(Resource.imgc).scaled()));
 	}
     }
 
@@ -78,9 +92,9 @@ public class IButton extends SIWidget {
     public void draw(BufferedImage buf) {
 	Graphics g = buf.getGraphics();
 	BufferedImage img;
-	if(a)
+	if(a && h)
 	    img = down;
-	else if(h)
+	else if(h || (d != null))
 	    img = hover;
 	else
 	    img = up;
@@ -102,7 +116,7 @@ public class IButton extends SIWidget {
 	    action.run();
     }
 
-    public boolean gkeytype(java.awt.event.KeyEvent ev) {
+    public boolean gkeytype(GlobKeyEvent ev) {
 	click();
 	return(true);
     }
@@ -113,10 +127,10 @@ public class IButton extends SIWidget {
     protected void unpress() {
     }
 
-    public boolean mousedown(Coord c, int button) {
-	if(button != 1)
+    public boolean mousedown(MouseDownEvent ev) {
+	if(ev.b != 1)
 	    return(false);
-	if(!checkhit(c))
+	if(!checkhit(ev.c))
 	    return(false);
 	a = true;
 	d = ui.grabmouse(this);
@@ -125,12 +139,13 @@ public class IButton extends SIWidget {
 	return(true);
     }
 
-    public boolean mouseup(Coord c, int button) {
-	if((d != null) && button == 1) {
+    public boolean mouseup(MouseUpEvent ev) {
+	if((d != null) && (ev.b == 1)) {
 	    d.remove();
 	    d = null;
-	    mousemove(c);
-	    if(checkhit(c)) {
+	    a = false;
+	    redraw();
+	    if(checkhit(ev.c)) {
 		unpress();
 		click();
 	    }
@@ -139,26 +154,14 @@ public class IButton extends SIWidget {
 	return(false);
     }
 
-    public void mousemove(Coord c) {
-	boolean h = checkhit(c);
-	boolean a = false;
-	if(d != null) {
-	    a = h;
-	    h = true;
-	}
-	if((h != this.h) || (a != this.a)) {
+    public void mousemove(MouseMoveEvent ev) {
+	boolean h = checkhit(ev.c);
+	if(h != this.h) {
 	    this.h = h;
-	    this.a = a;
 	    redraw();
 	}
     }
 
-    public Object tooltip(Coord c, Widget prev) {
-	if(!checkhit(c))
-	    return(null);
-	return(super.tooltip(c, prev));
-    }
-    
     public void images(BufferedImage up, BufferedImage down, BufferedImage hover) {
 	this.up = up;
 	this.down = down;

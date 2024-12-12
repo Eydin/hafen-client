@@ -36,6 +36,7 @@ public abstract class GSprite implements Drawn {
     private Message msg = null;
     static {
 	factories = Arrays.asList(new Factory[] {
+		AnimGSprite.fact,
 		StaticGSprite.fact,
 	    });
     }
@@ -43,8 +44,6 @@ public abstract class GSprite implements Drawn {
     public interface Owner extends OwnerContext {
 	public Random mkrandoom();
 	public Resource getres();
-	@Deprecated
-	public default Glob glob() {return(context(Glob.class));}
     }
 
     public interface ImageSprite {

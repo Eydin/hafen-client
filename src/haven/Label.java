@@ -39,7 +39,7 @@ public class Label extends Widget {
     public static class $_ implements Factory {
 	public Widget create(UI ui, Object[] args) {
 	    if(args.length > 1)
-		return(new Label((String)args[0], UI.scale((Integer)args[1])));
+		return(new Label((String)args[0], UI.scale(Utils.iv(args[1]))));
 	    else
 		return(new Label((String)args[0]));
 	}
@@ -104,10 +104,15 @@ public class Label extends Widget {
 	}
     }
     
+    @Override
+    public void i10n(boolean on) {
+	super.i10n(on);
+	settext(original);
+    }
     
     private String i10n(String text) {
 	original = text;
-	return i10n ? L10N.label(text) : text;
+	return i10n() ? L10N.label(text) : text;
     }
     
     public static class Untranslated extends Label {

@@ -30,7 +30,6 @@ import haven.Party.Member;
 
 import java.util.*;
 import java.awt.Color;
-import java.util.Map.Entry;
 
 public class Partyview extends Widget {
     public static final int marg = UI.scale(4);
@@ -43,7 +42,7 @@ public class Partyview extends Widget {
     @RName("pv")
     public static class $_ implements Factory {
 	public Widget create(UI ui, Object[] args) {
-	    return(new Partyview(ui.sess.glob.party, (Integer)args[0]));
+	    return(new Partyview(ui.sess.glob.party, Utils.uiv(args[0])));
 	}
     }
 
@@ -88,10 +87,13 @@ public class Partyview extends Widget {
 	    Gob gob = m.getgob();
 	    if(gob == null)
 		return(tooltip);
+	    return(null);
+	    /*
 	    KinInfo ki = gob.getattr(KinInfo.class);
 	    if(ki == null)
 		return(null);
 	    return(tooltip = ki.rendered());
+	    */
 	}
     }
 
@@ -147,22 +149,43 @@ public class Partyview extends Widget {
 	super.wdgmsg(sender, msg, args);
     }
 
+    private void updsteam() {
+	Steam api = Steam.get();
+	if(api != null)
+	    api.setparty(Integer.toString(party.id), party.memb.size());
+    }
+
+    public void destroy() {
+	super.destroy();
+	Steam api = Steam.get();
+	if(api != null)
+	    api.setparty(null, 0);
+    }
+
     public void uimsg(String msg, Object... args) {
 	if(msg == "list") {
 	    Map<Long, Member> nmemb = new HashMap<>(), cmemb = party.memb;
+	    Set<Member> members = new HashSet<>(cmemb.values());
 	    for(int a = 0; a < args.length; a++) {
-		long id = Utils.uint32((Integer)args[a]);
+		long id = Utils.uiv(args[a]);
 		Member m = cmemb.get(id);
-		if(m == null)
+		if(m == null) {
 		    m = party.new Member(id);
+		    members.add(m);
+		}
 		nmemb.put(id, m);
 	    }
 	    party.memb = nmemb;
+	    updsteam();
+	    members.forEach(Partyview::updateTags);
 	} else if(msg == "ldr") {
-	    party.leader = party.memb.get(Utils.uint32((Integer)args[0]));
+	    party.leader = party.memb.get(Utils.uiv(args[0]));
+	    if(party.leader != null) {
+		updateTags(party.leader);
+	    }
 	} else if(msg == "m") {
 	    int a = 0;
-	    Member m = party.memb.get(Utils.uint32((Integer)args[a++]));
+	    Member m = party.memb.get(Utils.uiv(args[a++]));
 	    if(m != null) {
 		Coord2d c = null;
 		if((a < args.length) && (args[a] instanceof Coord))
@@ -171,6 +194,9 @@ public class Partyview extends Widget {
 		    m.col = (Color)args[a++];
 		m.setc(c);
 	    }
+	} else if(msg == "pid") {
+	    party.id = Utils.iv(args[0]);
+	    updsteam();
 	} else {
 	    super.uimsg(msg, args);
 	}
@@ -179,8 +205,15 @@ public class Partyview extends Widget {
     public void dispose() {
 	/* XXX: Arguably, glob.party should be removed entirely, but
 	 * until then, at least clear it when logging out. */
+	List<Member> members = new ArrayList<>(party.memb.values());
 	party.memb = Collections.emptyMap();
 	party.leader = null;
+	members.forEach(Partyview::updateTags);
 	super.dispose();
+    }
+    
+    private static void updateTags(Member member) {
+	if(member == null) {return;}
+	Gob.gobTagsUpdated(member.getgob());
     }
 }

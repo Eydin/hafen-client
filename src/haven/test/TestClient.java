@@ -64,13 +64,6 @@ public class TestClient implements Runnable, UI.Context {
     
     public void connect() throws InterruptedException {
 	sess = new Session(addr, user, cookie);
-	synchronized(sess) {
-	    while(sess.state != "") {
-		if(sess.connfailed != 0)
-		    throw(new RuntimeException("Connection failure for " + user + " (" + sess.connfailed + ")"));
-		sess.wait();
-	    }
-	}
     }
     
     public void addbot(Robot bot) {
@@ -94,7 +87,7 @@ public class TestClient implements Runnable, UI.Context {
 	    this.sess = sess;
 	}
 	
-	public void newwidget(int id, String type, int parent, Object[] pargs, Object... cargs) throws InterruptedException {
+	public void newwidgetp(int id, String type, int parent, Object[] pargs, Object... cargs) throws InterruptedException {
 	    super.newwidget(id, type, parent, pargs, cargs);
 	    Widget w = getwidget(id);
 	    synchronized(robots) {

@@ -26,8 +26,9 @@
 
 package haven;
 
+import me.ender.ui.TabStrip;
+
 import java.awt.*;
-import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.util.*;
 import java.util.List;
@@ -54,7 +55,7 @@ public class FightWndEx extends Widget {
     public final Action[] order;
     public int usesave;
     private final Text[] saves;
-    private final FightWnd.ImageInfoBox info;
+    private final CharWnd.ImageInfoBox info;
     private final Label count;
     private final Map<Indir<Resource>, Object[]> actrawinfo = new HashMap<>();
     private boolean needFilter = false;
@@ -119,13 +120,13 @@ public class FightWndEx extends Widget {
 	    BufferedImage ret = res.get().layer(Resource.imgc).img;
 	    Graphics g = null;
 	    for(ItemInfo inf : info()) {
-		if(inf instanceof FightWnd.IconInfo) {
+		if(inf instanceof CharWnd.IconInfo) {
 		    if(g == null) {
 			BufferedImage buf = TexI.mkbuf(PUtils.imgsz(ret));
 			g = buf.getGraphics();
 			ret = buf;
 		    }
-		    ((FightWnd.IconInfo)inf).draw(ret, g);
+		    ((CharWnd.IconInfo)inf).draw(ret, g);
 		}
 	    }
 	    if(g != null)
@@ -141,7 +142,7 @@ public class FightWndEx extends Widget {
 	}
 	
 	public BufferedImage renderinfo(int width) {
-	    ItemInfo.Layout l = new ItemInfo.Layout();
+	    ItemInfo.Layout l = new ItemInfo.Layout(this);
 	    l.width = width;
 	    List<ItemInfo> info = info();
 	    l.cmp.add(rendericon(), Coord.z);
@@ -235,14 +236,14 @@ public class FightWndEx extends Widget {
 	    super.change(act);
 	}
 
-	public boolean mousewheel(Coord c, int am) {
+	public boolean mousewheel(MouseWheelEvent ev) {
 	    if(ui.modshift) {
-		Action act = itemat(c);
+		Action act = itemat(ev.c);
 		if(act != null)
-		    setu(act, act.u - am);
+		    setu(act, act.u - ev.a);
 		return (true);
 	    }
-	    return (super.mousewheel(c, am));
+	    return (super.mousewheel(ev));
 	}
 
 	public void draw(GOut g) {
@@ -286,35 +287,35 @@ public class FightWndEx extends Widget {
 	    dp = null;
 	}
 
-	public boolean mousedown(Coord c, int button) {
-	    if(button == 1) {
-		int idx = (c.y / itemh) + sb.val;
+	public boolean mousedown(MouseDownEvent ev) {
+	    if(ev.b == 1) {
+		int idx = (ev.c.y / itemh) + sb.val;
 		if(idx < listitems()) {
-		    if(onadd(c, idx)) {
+		    if(onadd(ev.c, idx)) {
 			da = idx;
 			d = ui.grabmouse(this);
 			return (true);
-		    } else if(onsub(c, idx)) {
+		    } else if(onsub(ev.c, idx)) {
 			ds = idx;
 			d = ui.grabmouse(this);
 			return (true);
 		    }
 		}
-		super.mousedown(c, button);
-		if((sel != null) && (c.x < sb.c.x)) {
+		super.mousedown(ev);
+		if((sel != null) && (ev.c.x < sb.c.x)) {
 		    d = ui.grabmouse(this);
 		    drag = sel;
-		    dp = c;
+		    dp = ev.c;
 		}
 		return (true);
 	    }
-	    return (super.mousedown(c, button));
+	    return (super.mousedown(ev));
 	}
 
-	public void mousemove(Coord c) {
-	    super.mousemove(c);
+	public void mousemove(MouseMoveEvent ev) {
+	    super.mousemove(ev);
 	    if((drag != null) && (dp != null)) {
-		if(c.dist(dp) > 5)
+		if(ev.c.dist(dp) > 5)
 		    dp = null;
 	    }
 	}
@@ -344,23 +345,25 @@ public class FightWndEx extends Widget {
 	    return (true);
 	}
 
-	public boolean mouseup(Coord c, int button) {
-	    if((d != null) && (button == 1)) {
+	@Override
+	public boolean mouseup(MouseUpEvent ev) {
+	    if((d != null) && (ev.b == 1)) {
 		d.remove();
 		d = null;
 		if(drag != null) {
-		    if(dp == null)
-			ui.dropthing(ui.root, c.add(rootpos()), drag);
+		    if(dp == null) {
+			DropTarget.dropthing(ui.root, ev.c.add(rootpos()), drag);
+		    }
 		    drag = null;
 		}
 		if(da >= 0) {
-		    if(onadd(c, da)) {
+		    if(onadd(ev.c, da)) {
 			Action act = listitem(da);
 			setu(act, act.u + 1);
 		    }
 		    da = -1;
 		} else if(ds >= 0) {
-		    if(onsub(c, ds)) {
+		    if(onsub(ev.c, ds)) {
 			Action act = listitem(ds);
 			setu(act, act.u - 1);
 		    }
@@ -368,7 +371,7 @@ public class FightWndEx extends Widget {
 		}
 		return (true);
 	    }
-	    return (super.mouseup(c, button));
+	    return (super.mouseup(ev));
 	}
 
 	public boolean drop(Coord cc, Coord ul) {
@@ -462,9 +465,10 @@ public class FightWndEx extends Widget {
 	    }
 	}
 
-	public boolean mousedown(Coord c, int button) {
-	    if(button == 1) {
-		int s = citem(c);
+	@Override
+	public boolean mousedown(MouseDownEvent ev) {
+	    if(ev.b == 1) {
+		int s = citem(ev.c);
 		if(s >= 0) {
 		    Action act = order[s];
 		    actlist.change(act);
@@ -472,12 +476,12 @@ public class FightWndEx extends Widget {
 		    if(act != null) {
 			grab = ui.grabmouse(this);
 			drag = act;
-			dp = c;
+			dp = ev.c;
 		    }
 		    return (true);
 		}
-	    } else if(button == 3) {
-		int s = citem(c);
+	    } else if(ev.b == 3) {
+		int s = citem(ev.c);
 		if(s >= 0) {
 		    if(order[s] != null)
 			order[s].u(0);
@@ -485,13 +489,14 @@ public class FightWndEx extends Widget {
 		    return (true);
 		}
 	    }
-	    return (super.mousedown(c, button));
+	    return (super.mousedown(ev));
 	}
 
-	public void mousemove(Coord c) {
-	    super.mousemove(c);
+	@Override
+	public void mousemove(MouseMoveEvent ev) {
+	    super.mousemove(ev);
 	    if(dp != null) {
-		if(c.dist(dp) > 5) {
+		if(ev.c.dist(dp) > 5) {
 		    grab.remove();
 		    actlist.drag(drag);
 		    grab = null;
@@ -501,14 +506,15 @@ public class FightWndEx extends Widget {
 	    }
 	}
 
-	public boolean mouseup(Coord c, int button) {
+	@Override
+	public boolean mouseup(MouseUpEvent ev) {
 	    if(grab != null) {
 		grab.remove();
 		grab = null;
 		drag = null;
 		dp = null;
 	    }
-	    return (super.mouseup(c, button));
+	    return (super.mouseup(ev));
 	}
 
 	private void animate(int s, Coord off) {
@@ -644,13 +650,14 @@ public class FightWndEx extends Widget {
 	    use(sel);
 	}
 
-	public boolean keydown(KeyEvent ev) {
+	@Override
+	public boolean keydown(KeyDownEvent ev) {
 	    if(edit != -1) {
-		if(ev.getKeyChar() == 27) {
+		if(ev.awt.getKeyChar() == 27) {
 		    cancel();
 		    return (true);
 		} else {
-		    return (nmed.key(ev));
+		    return (nmed.key(ev.awt));
 		}
 	    }
 	    return (super.keydown(ev));
@@ -701,7 +708,7 @@ public class FightWndEx extends Widget {
 	Widget header = add(new Img(CharWnd.catf.i10n_label("Martial Arts & Combat Schools").tex()), 0, 0);
     
 	Coord boxSz = wbox.btloff();
-	info = add(new FightWnd.ImageInfoBox(INFO_SZ), header.pos("br").xs(5).addys(5).add(boxSz));
+	info = add(new CharWnd.ImageInfoBox(INFO_SZ), header.pos("br").xs(5).addys(5).add(boxSz));
     
 	acttypes = add(new ActionTypes(this::actionTypeSelected), info.pos("ur").addxs(5).addx(boxSz.x));
 	acttypes.setSelectedColor(new Color(122, 191, 86, 153));
@@ -882,8 +889,8 @@ public class FightWndEx extends Widget {
 	    super();
 	    this.selected = selected;
 	    ActionType[] types = ActionType.values();
-	    for (int i = 0; i < types.length; i++) {
-		insert(i, types[i].icon(), "", types[i].name()).tag = types[i];
+	    for (ActionType type : types) {
+		insert(type, type.icon(), null, type.name());
 	    }
 	}
 

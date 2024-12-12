@@ -34,6 +34,8 @@ public class MappingClient {
     private int spamCount = 0;
     private Glob glob;
     
+    private boolean checkWisp = true;
+    private boolean isWisp = false;
     public static void init(Glob glob) {
 	synchronized (MappingClient.class) {
 	    if(INSTANCE == null) {
@@ -152,11 +154,30 @@ public class MappingClient {
     
     /***
      * Called as you move around, automatically calculates if you have entered a new grid and calls EnterGrid accordingly.
-     * @param c Normal coordinates
+     * @param gob Player gob, c Normal coordinates
      */
-    public void CheckGridCoord(Coord2d c) {
+    public void CheckGridCoord(Gob gob, Coord2d c) {
 	Coord gc = toGC(c);
 	if(lastGC == null || !gc.equals(lastGC)) {
+	    if (checkWisp) {
+		checkWisp = false;
+		try {
+		    String name = gob.getres().name;
+		    isWisp = name.equals("gfx/borka/wisp");
+		} catch (Exception e) {
+		    checkWisp = true;
+		    lastGC = gc;
+		    return;
+		}
+	    }
+	    if (isWisp) {
+		if (lastGC != null && lastGC.dist(gc) > 5) {
+		    isWisp = false;
+		} else {
+		    lastGC = gc;
+		    return;
+		}
+	    }
 	    EnterGrid(gc);
 	}
     }
@@ -394,13 +415,14 @@ public class MappingClient {
 		    Gob gob = g.oc.getgob(id);
 		    t.name = "???";
 		    t.type = "white";
-		    if(gob != null) {
-			KinInfo ki = gob.getattr(KinInfo.class);
-			if(ki != null) {
-			    t.name = ki.name;
-			    t.type = Integer.toHexString(BuddyWnd.gc[ki.group].getRGB());
-			}
-		    }
+		    //TODO: remove or migrate to new Buddy class
+//		    if(gob != null) {
+//			KinInfo ki = gob.getattr(KinInfo.class);
+//			if(ki != null) {
+//			    t.name = ki.name;
+//			    t.type = Integer.toHexString(BuddyWnd.gc[ki.group].getRGB());
+//			}
+//		    }
 		}
 	    }
 	    t.gridId = gridId;

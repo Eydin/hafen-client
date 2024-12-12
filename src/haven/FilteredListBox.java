@@ -34,11 +34,11 @@ public abstract class FilteredListBox<T> extends Listbox<T> {
     }
     
     @Override
-    public boolean keydown(KeyEvent ev) {
-	if(ignoredKey(ev)) {
+    public boolean keydown(KeyDownEvent ev) {
+	if(ignoredKey(ev.awt)) {
 	    return false;
 	}
-	if(ev.getKeyCode() == KeyEvent.VK_ESCAPE) {
+	if(ev.code == KeyEvent.VK_ESCAPE) {
 	    if(!filter.line().isEmpty()) {
 		filter.setline("");
 		needfilter();
@@ -47,7 +47,7 @@ public abstract class FilteredListBox<T> extends Listbox<T> {
 	}
 	
 	String before = filter.line();
-	if(filter.key(ev) && !before.equals(filter.line())) {
+	if(filter.key(ev.awt) && !before.equals(filter.line())) {
 	    needfilter();
 	    return true;
 	}
@@ -68,6 +68,11 @@ public abstract class FilteredListBox<T> extends Listbox<T> {
     public void needfilter() {
 	needfilter = true;
 	sb.val = 0;
+    }
+
+    public void filter(String filter) {
+	this.filter.setline(filter);
+	needfilter();
     }
     
     @Override

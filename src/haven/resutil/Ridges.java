@@ -43,12 +43,22 @@ public class Ridges implements MapMesh.ConsHooks {
     public static final MapMesh.DataID<Ridges> id = MapMesh.makeid(Ridges.class);
     public static final double segh = 8;
     private static final Coord tilesz = MCache.tilesz2;
+    private static final int FLAT_RIDGE = 11;
+    static Pipe.Op RIDGE_MAT = makeRidgeMat();
     public final MapMesh m;
     private final MapMesh.MapSurface ms;
     private final boolean[] breaks;
     private Vertex[][] edges, edgec;
     private float[] edgeo;
     private final MPart[] gnd, ridge;
+    
+    static {
+	CFG.COLOR_RIDGE_BOX.observe(cfg -> RIDGE_MAT = makeRidgeMat());
+    }
+    
+    private static Pipe.Op makeRidgeMat() {
+	return Pipe.Op.compose(new MixColor(CFG.COLOR_RIDGE_BOX.get()), Light.lighting.nil);
+    }
 
     public interface RidgeTile {
 	public double breakz();
@@ -57,12 +67,14 @@ public class Ridges implements MapMesh.ConsHooks {
     public static class RPart extends MPart {
 	public float[] rcx, rcy;
 	public int[] rn;
+	public int[][] ledge, uedge;
 	public float[] rh;
 
-	public RPart(Coord lc, Coord gc, Surface.Vertex[] v, float[] tcx, float[] tcy, int[] f, float[] rcx, float[] rcy, int[] rn, float[] rh) {
+	public RPart(Coord lc, Coord gc, Surface.Vertex[] v, float[] tcx, float[] tcy, int[] f, float[] rcx, float[] rcy, int[] rn, float[] rh, int[][] ledge, int[][] uedge) {
 	    super(lc, gc, v, tcx, tcy, f);
 	    this.rcx = rcx; this.rcy = rcy;
 	    this.rn = rn; this.rh = rh;
+	    this.ledge = ledge; this.uedge = uedge;
 	}
 
 	public RPart(RPart... parts) {super(parts);}
@@ -102,6 +114,26 @@ public class Ridges implements MapMesh.ConsHooks {
 		    if(nid < 0)
 			continue;
 		    this.rh[nid] = parts[i].rh[o];
+		}
+	    }
+	    {
+		int nu = 0, nl = 0;
+		for(int i = 0; i < parts.length; i++) {
+		    nl += parts[i].ledge.length;
+		    nu += parts[i].uedge.length;
+		}
+		this.ledge = new int[nl][]; this.uedge = new int[nu][];
+	    }
+	    for(int i = 0, nl = 0, nu = 0; i < parts.length; i++) {
+		for(int o = 0; o < parts[i].ledge.length; o++, nl++) {
+		    this.ledge[nl] = new int[parts[i].ledge[o].length];
+		    for(int u = 0; u < parts[i].ledge[o].length; u++)
+			this.ledge[nl][u] = vmap[i][parts[i].ledge[o][u]];
+		}
+		for(int o = 0; o < parts[i].uedge.length; o++, nu++) {
+		    this.uedge[nu] = new int[parts[i].uedge[o].length];
+		    for(int u = 0; u < parts[i].uedge[o].length; u++)
+			this.uedge[nu][u] = vmap[i][parts[i].uedge[o][u]];
 		}
 	    }
 	}
@@ -155,11 +187,11 @@ public class Ridges implements MapMesh.ConsHooks {
 	for(c.y = 0; c.y <= m.sz.y; c.y++) {
 	    for(c.x = 0; c.x <= m.sz.x; c.x++) {
 		Coord tc = m.ul.add(c);
-		double ul = m.map.getfz(tc);
-		double xd = Math.abs(ul - m.map.getfz(tc.add(1, 0)));
+		double ul = m.map.getfz2(tc);
+		double xd = Math.abs(ul - m.map.getfz2(tc.add(1, 0)));
 		if((xd > bz[ts.o(c.x, c.y)]) && (xd > bz[ts.o(c.x, c.y - 1)]))
 		    breaks[eo(c, 0)] = true;
-		double yd = Math.abs(ul - m.map.getfz(tc.add(0, 1)));
+		double yd = Math.abs(ul - m.map.getfz2(tc.add(0, 1)));
 		if((yd > bz[ts.o(c.x, c.y)]) && (yd > bz[ts.o(c.x - 1, c.y)]))
 		    breaks[eo(c, 3)] = true;
 	    }
@@ -178,7 +210,7 @@ public class Ridges implements MapMesh.ConsHooks {
     private static final Coord[] tccs = {new Coord(0, 0), new Coord(1, 0), new Coord(1, 1), new Coord(0, 1)};
     private boolean edgelc(Coord tc, int e) {
 	Coord gc = tc.add(m.ul);
-	return(m.map.getfz(gc.add(tccs[e])) < m.map.getfz(gc.add(tccs[(e + 1) % 4])));
+	return(m.map.getfz2(gc.add(tccs[e])) < m.map.getfz2(gc.add(tccs[(e + 1) % 4])));
     }
 
     private Vertex[] makeedge(Coord tc, int e) {
@@ -189,8 +221,12 @@ public class Ridges implements MapMesh.ConsHooks {
 	float eds = edgelc(tc, e)?1:-1;
 	float lo, hi; {
 	    Coord gc = tc.add(m.ul);
-	    float z1 = (float)m.map.getfz(gc.add(tccs[e])), z2 = (float)m.map.getfz(gc.add(tccs[(e + 1) % 4]));
+	    float z1 = (float)m.map.getfz2(gc.add(tccs[e])), z2 = (float)m.map.getfz2(gc.add(tccs[(e + 1) % 4]));
 	    lo = Math.min(z1, z2); hi = Math.max(z1, z2);
+	    if(CFG.FLAT_TERRAIN.get()) {
+		lo = 0;
+		hi = FLAT_RIDGE;
+	    }
 	}
 	int nseg = Math.max((int)Math.round((hi - lo) / segh), 2) - 1;
 	Vertex[] ret = new Vertex[nseg + 1];
@@ -247,7 +283,7 @@ public class Ridges implements MapMesh.ConsHooks {
     private float[] tczs(Coord tc) {
 	float[] ret = new float[4];
 	for(int i = 0; i < 4; i++)
-	    ret[i] = (float)m.map.getfz(tc.add(m.ul).add(tccs[i]));
+	    ret[i] = (float)m.map.getfz2(tc.add(m.ul).add(tccs[i]));
 	return(ret);
     }
 
@@ -271,9 +307,9 @@ public class Ridges implements MapMesh.ConsHooks {
 	if(b[0] && b[1] && b[2] && b[3]) {
 	    Coord gc = tc.add(m.ul);
 	    double bz = ((RidgeTile)m.map.tiler(m.map.gettile(gc))).breakz() + EPSILON;
-	    if(Math.abs(m.map.getfz(gc) - m.map.getfz(gc.add(1, 1))) <= bz)
+	    if(Math.abs(m.map.getfz2(gc) - m.map.getfz2(gc.add(1, 1))) <= bz)
 		return(0);
-	    if(Math.abs(m.map.getfz(gc.add(0, 1)) - m.map.getfz(gc.add(1, 0))) <= bz)
+	    if(Math.abs(m.map.getfz2(gc.add(0, 1)) - m.map.getfz2(gc.add(1, 0))) <= bz)
 		return(1);
 	}
 	return(-1);
@@ -303,6 +339,7 @@ public class Ridges implements MapMesh.ConsHooks {
 	    rcx[i + n] = 1; rcy[i + n] = (rh == 0)?0:((r[i].z - r[0].z) / rh);
 	    rn[i + n] = 1;
 	}
+	int[][] ledge = {{0, n}}, uedge = {{n - 1, n + m - 1}};
 	int[] fa = new int[(n + m - 2) * 3];
 	int fi = 0;
 	int a = 0, b = 0;
@@ -321,7 +358,7 @@ public class Ridges implements MapMesh.ConsHooks {
 	    }
 	}
 	mkfaces(va, fa);
-	return(new RPart(tc, tc.add(this.m.ul), va, tcx, tcy, fa, rcx, rcy, rn, rhs));
+	return(new RPart(tc, tc.add(this.m.ul), va, tcx, tcy, fa, rcx, rcy, rn, rhs, ledge, uedge));
     }
 
     private void modelcap(Coord tc, int dir) {
@@ -348,6 +385,9 @@ public class Ridges implements MapMesh.ConsHooks {
 	}
 	mkfaces(gv, srfi);
 	gnd[ms.ts.o(tc)] = new MPart(tc, tc.add(m.ul), gv, tcx, tcy, srfi);
+	if (CFG.DISPLAY_RIDGE_BOX.get()) {
+	    gnd[ms.ts.o(tc)].mat = RIDGE_MAT;
+	}
 
 	Vertex[] cls = new Vertex[] {ms.new Vertex(close)};
 	if(edgelc(tc, dir))
@@ -378,6 +418,9 @@ public class Ridges implements MapMesh.ConsHooks {
 	}
 	mkfaces(gv, srfi);
 	gnd[ms.ts.o(tc)] = new MPart(tc, tc.add(m.ul), gv, tcx, tcy, srfi);
+	if (CFG.DISPLAY_RIDGE_BOX.get()) {
+	    gnd[ms.ts.o(tc)].mat = RIDGE_MAT;
+	}
 
 	if(edgelc(tc, dir))
 	    ridge[ms.ts.o(tc)] = connect(tc, edges[eo(tc, dir)], edges[eo(tc, dir + 2)]);
@@ -407,6 +450,9 @@ public class Ridges implements MapMesh.ConsHooks {
 	}
 	mkfaces(gv, d1rfi);
 	gnd[ms.ts.o(tc)] = new MPart(tc, tc.add(m.ul), gv, tcx, tcy, d1rfi);
+	if (CFG.DISPLAY_RIDGE_BOX.get()) {
+	    gnd[ms.ts.o(tc)].mat = RIDGE_MAT;
+	}
 
 	if(edgelc(tc, dir))
 	    ridge[ms.ts.o(tc)] = connect(tc, edges[eo(tc, dir)], edges[eo(tc, (dir + 1) % 4)]);
@@ -464,12 +510,19 @@ public class Ridges implements MapMesh.ConsHooks {
 		md = zd;
 	    }
 	}
+	if(CFG.FLAT_TERRAIN.get()) {
+	    ret.z = FLAT_RIDGE;
+	}
 	return(ret);
     }
 
     private Vertex[] colzmatch(Coord3f[] cl, float lo, float hi) {
 	int i, l, h;
 	float md;
+	if(CFG.FLAT_TERRAIN.get()) {
+	    lo = 0;
+	    hi = FLAT_RIDGE;
+	}
 	for(i = 1, l = 0, md = Math.abs(cl[0].z - lo); i < cl.length; i++) {
 	    float zd = Math.abs(cl[i].z - lo);
 	    if(zd < md) {
@@ -611,10 +664,11 @@ public class Ridges implements MapMesh.ConsHooks {
 	} else {
 	    try {
 		modelcomplex(tc, b);
-	    } catch(ArrayIndexOutOfBoundsException e) {
+	    } catch(ArrayIndexOutOfBoundsException | NegativeArraySizeException e) {
 		/* XXX: Just ignore for now, until I can find the
 		 * cause of this. */
-	    } catch(NegativeArraySizeException e) {
+		Coord gc = tc.add(m.ul);
+		new Warning(e, String.format("ridge crash at %s in %x", gc, m.map.getgridt(gc).id)).issue();
 	    }
 	    return(true);
 	}
@@ -686,6 +740,12 @@ public class Ridges implements MapMesh.ConsHooks {
 	return(true);
     }
 
+    public RPart getrdesc(Coord tc) {
+	/* XXX? It is somewhat dubious that these aren't thrown away
+	 * in cleanup(), but for now they are useful. */
+	return((RPart)this.ridge[ms.ts.o(tc)]);
+    }
+
     public boolean clean() {
 	edgeo = new float[edgec.length * 2];
 	for(int i = 0; i < edgec.length; i++) {
@@ -714,7 +774,7 @@ public class Ridges implements MapMesh.ConsHooks {
 		bz = Math.min(bz, ((RidgeTile)t).breakz() + EPSILON);
 	}
 	for(int i = 0; i < 4; i++) {
-	    if(Math.abs(map.getfz(tc.add(tccs[(i + 1) % 4])) - map.getfz(tc.add(tccs[i]))) > bz)
+	    if(Math.abs(map.getfz2(tc.add(tccs[(i + 1) % 4])) - map.getfz2(tc.add(tccs[i]))) > bz)
 		return(true);
 	}
 	return(false);

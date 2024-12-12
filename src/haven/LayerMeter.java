@@ -32,7 +32,7 @@ import java.util.*;
 public abstract class LayerMeter extends Widget implements ItemInfo.Owner {
     protected ItemInfo.Raw rawinfo = null;
     protected List<ItemInfo> info = Collections.emptyList();
-    protected List<Meter> meters = Collections.emptyList();
+    public List<Meter> meters = Collections.emptyList();
 
     public LayerMeter(Coord sz) {
 	super(sz);
@@ -56,21 +56,19 @@ public abstract class LayerMeter extends Widget implements ItemInfo.Owner {
 	set(Collections.singletonList(new Meter(a, c)));
     }
 
+    private static double av(Object arg) {
+	if(arg instanceof Integer)
+	    return(((Integer)arg).doubleValue() * 0.01);
+	else
+	    return(Utils.dv(arg));
+    }
+
     public static List<Meter> decmeters(Object[] args, int s) {
 	if(args.length == s)
 	    return(Collections.emptyList());
 	ArrayList<Meter> buf = new ArrayList<>();
-	if(args[s] instanceof Number) {
-	    for(int a = s; a < args.length; a += 2)
-		buf.add(new Meter(((Number)args[a]).doubleValue() * 0.01, (Color)args[a + 1]));
-	} else {
-	    /* XXX: To be considered deprecated, but is was the
-	     * traditional argument layout of IMeter, so let clients
-	     * with the newer convention spread before converting the
-	     * server. */
-	    for(int a = s; a < args.length; a += 2)
-		buf.add(new Meter(((Number)args[a + 1]).doubleValue() * 0.01, (Color)args[a]));
-	}
+	for(int a = s; a < args.length; a += 2)
+	    buf.add(new Meter(av(args[a]), (Color)args[a + 1]));
 	buf.trimToSize();
 	return(buf);
     }
@@ -95,25 +93,21 @@ public abstract class LayerMeter extends Widget implements ItemInfo.Owner {
 	double now = Utils.rtime();
 	if(prev != this)
 	    hoverstart = now;
-	try {
-	    if(now - hoverstart < 1.0) {
-		if(shorttip == null)
-		    shorttip = new TexI(ItemInfo.shorttip(info()));
-		return(shorttip);
-	    } else {
-		if(longtip == null)
-		    longtip = new TexI(ItemInfo.longtip(info()));
-		return(longtip);
-	    }
-	} catch(Loading l) {
-	    return("...");
+	if(now - hoverstart < 1.0) {
+	    if(shorttip == null)
+		shorttip = new TexI(ItemInfo.shorttip(info()));
+	    return(shorttip);
+	} else {
+	    if(longtip == null)
+		longtip = new TexI(ItemInfo.longtip(info()));
+	    return(longtip);
 	}
     }
 
     public void uimsg(String msg, Object... args) {
 	if(msg == "set") {
 	    if(args.length == 1) {
-		set(((Number)args[0]).doubleValue() * 0.01, meters.isEmpty() ? Color.WHITE : meters.get(0).c);
+		set(av(args[0]), meters.isEmpty() ? Color.WHITE : meters.get(0).c);
 	    } else {
 		set(decmeters(args, 0));
 	    }
@@ -130,5 +124,15 @@ public abstract class LayerMeter extends Widget implements ItemInfo.Owner {
 	} else {
 	    super.uimsg(msg, args);
 	}
+    }
+    
+    @Override
+    public Widget settip(String text) {
+	return super.settip(text);
+    }
+    
+    @Override
+    public Widget settip(String text, boolean rich) {
+	return super.settip(text, rich);
     }
 }

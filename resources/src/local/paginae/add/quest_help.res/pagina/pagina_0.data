@@ -1,0 +1,3 @@
+#PAGINA LAYER
+#String text
+Opens list of all uncompleted tasks for currently active quests. Tasks that are last ones in their quests are marked with a star. Tasks from credo quests are marked with a book symbol.

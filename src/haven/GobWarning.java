@@ -6,7 +6,6 @@ import java.awt.*;
 import java.util.HashMap;
 import java.util.Map;
 
-import static haven.GameUI.*;
 import static haven.GobWarning.WarnMethod.*;
 import static haven.GobWarning.WarnTarget.*;
 
@@ -19,7 +18,7 @@ public class GobWarning extends GAttrib implements RenderTree.Node {
 	tgt = categorize(gob);
 	if(tgt != null) {
 	    if(WarnCFG.get(tgt, message)) {
-		gob.glob.sess.ui.message(String.format("%s spotted!", tgt.message), tgt.mcol, errsfx);
+		gob.glob.sess.ui.message(String.format("%s spotted!", tgt.message), tgt.mcol, UI.ErrorMessage.sfx);
 	    }
 	    radius = new ColoredRadius(gob, tgt.radius, tgt.scol, tgt.ecol);
 	} else {
@@ -162,6 +161,7 @@ public class GobWarning extends GAttrib implements RenderTree.Node {
 	    box.changed(val -> WarnCFG.set(midges, message, val));
 	    
 	    pack();
+	    Coord asz = ca().sz();
 	    if(asz.x < 200) {
 		resize(new Coord(200, asz.y));
 	    }

@@ -1,16 +1,12 @@
 package haven;
 
 public enum Theme {
-    Pretty(WindowX.DecoratorType.Big),
-    Small(WindowX.DecoratorType.Slim);
+    Pretty(DecoX.DecoThemeType.Big),
+    Small(DecoX.DecoThemeType.Small);
     
-    private final WindowX.DecoratorType deco;
+    public final DecoX.DecoThemeType deco;
     
-    Theme(WindowX.DecoratorType deco) {
+    Theme(DecoX.DecoThemeType deco) {
         this.deco = deco;
-    }
-    
-    public WindowX.Decorator deco() {
-        return WindowX.decoratorByType(deco);
     }
 }

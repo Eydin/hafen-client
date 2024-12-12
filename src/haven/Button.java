@@ -39,9 +39,8 @@ public class Button extends SIWidget {
     public static final BufferedImage bm = Resource.loadsimg("gfx/hud/buttons/tbtn/mid");
     public static final int hs = bl.getHeight(), hl = bm.getHeight();
     public static final Resource click = Loading.waitfor(Resource.local().load("sfx/hud/btn"));
-    @Deprecated public static final Resource.Audio lbtdown = Loading.waitfor(Resource.local().load("sfx/hud/lbtn")).layer(Resource.audio, "down");
-    @Deprecated public static final Resource.Audio lbtup   = Loading.waitfor(Resource.local().load("sfx/hud/lbtn")).layer(Resource.audio, "up");
-    public static final Audio.Clip clbtdown = lbtdown, clbtup = lbtup;
+    public static final Audio.Clip clbtdown = Loading.waitfor(Resource.local().load("sfx/hud/lbtn")).layer(Resource.audio, "down");
+    public static final Audio.Clip clbtup = Loading.waitfor(Resource.local().load("sfx/hud/lbtn")).layer(Resource.audio, "up");
     public static final int margin = UI.scale(10);
     private final int w;
     private boolean autosized = false;
@@ -50,7 +49,7 @@ public class Button extends SIWidget {
     public BufferedImage cont;
     public Runnable action = null;
     static Text.Foundry tf = new Text.Foundry(Text.serif.deriveFont(Font.BOLD, UI.scale(12f))).aa(true);
-    static Text.Furnace nf = new PUtils.BlurFurn(new PUtils.TexFurn(tf, Window.ctex), 1, 1, new Color(80, 40, 0));
+    static Text.Furnace nf = new PUtils.BlurFurn(new PUtils.TexFurn(tf, Window.ctex), UI.rscale(0.75), UI.rscale(0.75), new Color(80, 40, 0));
     private boolean a = false, dis = false;
     private UI.Grab d = null;
 	
@@ -58,9 +57,9 @@ public class Button extends SIWidget {
     public static class $Btn implements Factory {
 	public Widget create(UI ui, Object[] args) {
 	    if(args.length > 2)
-		return(new Button(UI.scale((Integer)args[0]), (String)args[1], ((Integer)args[2]) != 0));
+		return(new Button(UI.scale(Utils.iv(args[0])), (String)args[1], Utils.bv(args[2])));
 	    else
-		return(new Button(UI.scale((Integer)args[0]), (String)args[1]));
+		return(new Button(UI.scale(Utils.iv(args[0])), (String)args[1]));
 	}
     }
     
@@ -73,7 +72,7 @@ public class Button extends SIWidget {
     @RName("ltbtn")
     public static class $LTBtn implements Factory {
 	public Widget create(UI ui, Object[] args) {
-	    return(wrapped(UI.scale((Integer)args[0]), (String)args[1]));
+	    return(wrapped(UI.scale(Utils.iv(args[0])), (String)args[1]));
 	}
     }
 	
@@ -95,7 +94,7 @@ public class Button extends SIWidget {
 
     public Button(int w, String text, boolean lg, Runnable action) {
 	this(w, lg);
-	if(i10n) text = L10N.button(text);
+	if(i10n()) text = L10N.button(text);
 	this.text = nf.render(text);
 	this.cont = this.text.img;
 	this.action = action;
@@ -168,14 +167,14 @@ public class Button extends SIWidget {
     }
 	
     public void change(String text, Color col) {
-	if(i10n) text = L10N.button(text);
+	if(i10n()) text = L10N.button(text);
 	this.text = tf.render(text, col);
 	this.cont = this.text.img;
 	redraw();
     }
     
     public void change(String text) {
-	if(i10n) text = L10N.button(text);
+	if(i10n()) text = L10N.button(text);
 	this.text = nf.render(text);
 	this.cont = this.text.img;
 	redraw();
@@ -191,7 +190,7 @@ public class Button extends SIWidget {
 	    action.run();
     }
 
-    public boolean gkeytype(java.awt.event.KeyEvent ev) {
+    public boolean gkeytype(GlobKeyEvent ev) {
 	click();
 	return(true);
     }
@@ -203,15 +202,16 @@ public class Button extends SIWidget {
 	    else
 		change((String)args[0]);
 	} else if(msg == "dis") {
-	    disable(((Integer)args[1]) != 0);
+	    disable(Utils.bv(args[1]));
 	} else {
 	    super.uimsg(msg, args);
 	}
     }
     
-    public void mousemove(Coord c) {
+    public void mousemove(MouseMoveEvent ev) {
+	super.mousemove(ev);
 	if(d != null) {
-	    boolean a = c.isect(Coord.z, sz);
+	    boolean a = ev.c.isect(Coord.z, sz);
 	    if(a != this.a) {
 		this.a = a;
 		redraw();
@@ -227,9 +227,9 @@ public class Button extends SIWidget {
 	ui.sfx(click);
     }
 
-    public boolean mousedown(Coord c, int button) {
-	if((button != 1) || dis)
-	    return(false);
+    public boolean mousedown(MouseDownEvent ev) {
+	if((ev.b != 1) || dis)
+	    return(super.mousedown(ev));
 	a = true;
 	d = ui.grabmouse(this);
 	depress();
@@ -237,18 +237,23 @@ public class Button extends SIWidget {
 	return(true);
     }
 	
-    public boolean mouseup(Coord c, int button) {
-	if((d != null) && button == 1) {
+    public boolean mouseup(MouseUpEvent ev) {
+	if((d != null) && ev.b == 1) {
 	    d.remove();
 	    d = null;
 	    a = false;
 	    redraw();
-	    if(c.isect(new Coord(0, 0), sz)) {
+	    if(ev.c.isect(Coord.z, sz)) {
 		unpress();
 		click();
 	    }
 	    return(true);
 	}
-	return(false);
+	return(super.mouseup(ev));
+    }
+    
+    public void large(boolean val) {
+	lg = val;
+	sz = Coord.of(sz.x, lg ? hl : hs);
     }
 }

@@ -70,32 +70,33 @@ public class Following extends Moving {
 	return tgt == null ? Coord3f.o : tgt.getc();
     }
 
-    private Skeleton.Pose getpose(Gob tgt) {
-	if(tgt == null)
-	    return(null);
-	return(Skeleton.getpose(tgt.getattr(Drawable.class)));
+    private class XfResolver implements Runnable {
+	final Gob tgt;
+	Supplier<? extends Pipe.Op> xf = null;
+
+	XfResolver(Gob tgt) {
+	    this.tgt = tgt;
+	    tgt.defer(this);
+	}
+
+	public void run() {
+	    this.xf = xfres.get().flayer(Skeleton.BoneOffset.class, xfname).from(tgt);
+	}
     }
 
     private Pipe.Op xf = null, lpxf = null, lbxf = null;
-    private Supplier<? extends Pipe.Op> bxf = () -> null;
-    private Skeleton.Pose lpose = null;
-    private boolean hlpose = false;
+    private XfResolver bxf = null;
     public Pipe.Op xf() {
 	synchronized(this) {
 	    Gob tgt = tgt();
 	    if(tgt != null) {
-		Skeleton.Pose cpose = getpose(tgt);
-		if(!hlpose || (cpose != lpose)) {
-		    bxf = xfres.get().flayer(Skeleton.BoneOffset.class, xfname).from(lpose = cpose);
-		    hlpose = true;
-		}
+		if((bxf == null) || (tgt != bxf.tgt))
+		    bxf = new XfResolver(tgt);
 	    } else {
-		bxf = () -> null;
-		lpose = null;
-		hlpose = false;
+		bxf = null;
 	    }
 	    Pipe.Op cpxf = (tgt == null) ? null : tgt.placed.placement();
-	    Pipe.Op cbxf = bxf.get();
+	    Pipe.Op cbxf = ((bxf == null) || (bxf.xf == null)) ? null : bxf.xf.get();
 	    if((xf == null) || !Utils.eq(cbxf, lbxf) || !Utils.eq(cpxf, lpxf)) {
 		xf = Pipe.Op.compose(cpxf, cbxf);
 		lpxf = cpxf;
@@ -107,7 +108,7 @@ public class Following extends Moving {
 
     @OCache.DeltaType(OCache.OD_FOLLOW)
     public static class $follow implements OCache.Delta {
-	public void apply(Gob g, Message msg) {
+	public void apply(Gob g, OCache.AttrDelta msg) {
 	    long oid = msg.uint32();
 	    if(oid != 0xffffffffl) {
 		Indir<Resource> xfres = OCache.Delta.getres(g, msg.uint16());

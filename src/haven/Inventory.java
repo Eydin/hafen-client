@@ -33,7 +33,7 @@ import java.awt.image.WritableRaster;
 import java.util.function.BiConsumer;
 
 public class Inventory extends Widget implements DTarget {
-    public static final Coord sqsz = UI.scale(new Coord(33, 33));
+    public static final Coord sqsz = UI.scale(new Coord(32, 32)).add(1, 1);
     public static final Tex invsq;
     public boolean dropul = true;
     private boolean canDropItems = false;
@@ -96,9 +96,13 @@ public class Inventory extends Widget implements DTarget {
 	int mo = 0;
 	for(c.y = 0; c.y < isz.y; c.y++) {
 	    for(c.x = 0; c.x < isz.x; c.x++) {
-		if((sqmask != null) && sqmask[mo++])
-		    continue;
-		g.image(invsq, c.mul(sqsz));
+		if((sqmask != null) && sqmask[mo++]) {
+		    g.chcolor(64, 64, 64, 255);
+		    g.image(invsq, c.mul(sqsz));
+		    g.chcolor();
+		} else {
+		    g.image(invsq, c.mul(sqsz));
+		}
 	    }
 	}
 	super.draw(g);
@@ -109,23 +113,23 @@ public class Inventory extends Widget implements DTarget {
 	isz = sz;
     }
     
-    public boolean mousewheel(Coord c, int amount) {
+    public boolean mousewheel(MouseWheelEvent ev) {
 	if(locked){return false;}
 	if(ui.modshift) {
 	    ExtInventory minv = getparent(GameUI.class).maininvext;
 	    if(minv != this.parent) {
-		if(amount < 0)
+		if(ev.a < 0)
 		    wdgmsg("invxf", minv.wdgid(), 1);
-		else if(amount > 0)
+		else if(ev.a > 0)
 		    minv.wdgmsg("invxf", parent.wdgid(), 1);
 	    }
 	}
 	return(true);
     }
-
+    
     @Override
-    public boolean mousedown(Coord c, int button) {
-	return !locked && super.mousedown(c, button);
+    public boolean mousedown(MouseDownEvent ev) {
+	return locked || super.mousedown(ev);
     }
 
     public void addchild(Widget child, Object... args) {
@@ -192,7 +196,7 @@ public class Inventory extends Widget implements DTarget {
 	    this.sqmask = nmask;
 	    cachedSize = -1;
 	} else if(msg == "mode") {
-	    dropul = (((Integer)args[0]) == 0);
+	    dropul = !Utils.bv(args[0]);
 	} else {
 	    super.uimsg(msg, args);
 	}
@@ -227,7 +231,7 @@ public class Inventory extends Widget implements DTarget {
 	    if(wdg.visible && wdg instanceof WItem) {
 		WItem wItem = (WItem) wdg;
 		GItem child = wItem.item;
-		if(item.matches == child.matches && isSame(name, spr, child)) {
+		if(item.matches() == child.matches() && isSame(name, spr, child)) {
 		    items.add(wItem);
 		}
 	    }
@@ -320,15 +324,22 @@ public class Inventory extends Widget implements DTarget {
 	    canDropItems = true;
 	    dropsCallback = this::doDrops;
 	    ItemAutoDrop.addCallback(dropsCallback);
-	    wnd.addtwdg(wnd.add(new ICheckBox("gfx/hud/btn-adrop", "", "-d", "-h")
+	    wnd.addtwdg(new ICheckBox("gfx/hud/btn-adrop", "", "-d", "-h")
 		.changed(this::doEnableDrops)
 		.rclick(this::showDropCFG)
 		.settip("Left-click to toggle item dropping\nRight-click to open settings", true)
-	    ));
+	    );
 	}
     }
     public void itemsChanged() {
 	if(ext != null) {ext.itemsChanged();}
+	GItem.ContentsWindow cnt = getparent(GItem.ContentsWindow.class);
+	if(cnt != null) {
+	    Inventory inv = cnt.cont.getparent(Inventory.class);
+	    if(inv != null) {
+		inv.itemsChanged();
+	    }
+	}
     }
     
     private void showDropCFG() {

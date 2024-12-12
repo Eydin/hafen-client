@@ -5,6 +5,8 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import haven.MenuGrid.Pagina;
 import haven.rx.Reactor;
+import me.ender.ui.ICraftParent;
+import me.ender.ui.TabStrip;
 import rx.Subscription;
 
 import java.awt.*;
@@ -19,7 +21,7 @@ import java.util.stream.Collectors;
 import static haven.CraftDBWnd.Mode.*;
 import static haven.ItemFilter.*;
 
-public class CraftDBWnd extends WindowX implements DTarget2 {
+public class CraftDBWnd extends WindowX implements ICraftParent {
     private static final int PANEL_H = UI.scale(52);
     private static final Coord WND_SZ = UI.scale(635, 360).addy(PANEL_H);
     private static final Coord ICON_SZ = UI.scale(20, 20);
@@ -132,11 +134,11 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
 	    }
 	}, 0, UI.scale(2));
 	Mode[] modes = Mode.values();
-	for (int i = 0; i < modes.length; i++) {
-	    Resource res = modes[i].res.get();
-	    tabStrip.insert(i,
+	for (Mode mode : modes) {
+	    Resource res = mode.res.get();
+	    tabStrip.insert(mode,
 		new TexI(PUtils.convolvedown(res.layer(Resource.imgc).img, ICON_SZ, CharWnd.iconfilter)),
-		paginafor(modes[i].res).act().name, null).tag = modes[i];
+		paginafor(mode.res).button().act().name, null);
 	}
     
 	box = add(new RecipeListBox(UI.scale(200), LIST_SIZE) {
@@ -158,12 +160,12 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
 		}
 	    }
 	}, 0, PANEL_H + UI.scale(5));
-	addtwdg(add(new IButton("gfx/hud/btn-help", "", "-d", "-h") {
+	addtwdg(new IButton("gfx/hud/btn-help", "", "-d", "-h") {
 	    @Override
 	    public void click() {
 		ItemFilter.showHelp(ui, HELP_SIMPLE, HELP_CURIO, HELP_FEP, HELP_ARMOR, HELP_SYMBEL, HELP_ATTR, HELP_INPUTS);
 	    }
-	}));
+	});
 	btnFavourite = add(new ToggleButton(
 	    "gfx/hud/btn-star-e", "", "-d", "-h",
 	    "gfx/hud/btn-star-f", "", "-d", "-h"
@@ -327,7 +329,7 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
 		if(children.size() == 0) {
 		    children = getPaginaChildren(menu.getParent(p));
 		}
-		children.sort(MenuGrid.sorter);
+		children.sort(Comparator.comparing(pag -> pag.button().sortkey()));
 		if(p != CRAFT) {
 		    children.add(0, BACK);
 		}
@@ -375,7 +377,7 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
 	}
 	if(description == null) {
 	    try {
-		description = ItemData.longtip(descriptionPagina, ui.sess, 20, 5);
+		description = ItemData.longtip(descriptionPagina, true, 20, 5);
 	    } catch (Loading ignored) {}
 	}
 	if(description != null) {
@@ -398,7 +400,7 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
 		Collections.reverse(parents);
 		for(Pagina item : parents) {
 		    BufferedImage img = item.res().layer(Resource.imgc).img;
-		    Resource.AButton act = item.act();
+		    Resource.AButton act = item.button().act();
 		    String name = "...";
 		    if(act != null) {
 			name = act.name;
@@ -449,23 +451,6 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
 	return ui.gui.menu.findPagina(name);
     }
 
-    private void updateInfo(WItem item){
-	ItemData.actualize(item.item, current);
-	updateDescription(current);
-    }
-
-    @Override
-    public boolean drop(WItem target, Coord cc, Coord ul) {
-	updateInfo(target);
-	return true;
-    }
-
-    @Override
-    public boolean iteminteract(WItem target, Coord cc, Coord ul) {
-	updateInfo(target);
-	return true;
-    }
-    
     @Override
     public void tick(double dt) {
 	super.tick(dt);
@@ -477,7 +462,7 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
 		    All.items.clear();
 		    All.items.addAll(
 			menu.paginae.stream()
-			    .filter(p -> category.matcher(Pagina.name(p)).matches())
+			    .filter(p -> category.matcher(Pagina.resname(p)).matches())
 			    .collect(Collectors.toList())
 		    );
 		    
@@ -507,7 +492,7 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
 		try {
 		    Resource res = p.res.get();
 		    String name = res.layer(Resource.action).name.toLowerCase();
-		    return (name.contains(filter) || itemFilter.matches(p, ui.sess));
+		    return (name.contains(filter) || itemFilter.matches(p));
 		} catch (Loading e) {
 		    needfilter = true;
 		}
@@ -525,11 +510,12 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
     }
     
     @Override
-    public boolean keydown(KeyEvent ev) {
-	if(ignoredKey(ev)) {
+    public boolean keydown(KeyDownEvent ev) {
+	if(super.keydown(ev)) {return true;}
+	if(ignoredKey(ev.awt)) {
 	    return false;
 	}
-	switch (ev.getKeyCode()) {
+	switch (ev.code) {
 	    case KeyEvent.VK_ESCAPE:
 		if(!filter.line().isEmpty()) {
 		    changeMode(mode);
@@ -559,7 +545,7 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
 	}
  
 	String before = filter.line();
-	if(filter.key(ev) && !before.equals(filter.line())) {
+	if(filter.key(ev.awt) && !before.equals(filter.line())) {
 	    needfilter();
 	    if(filter.line().isEmpty()) {
 		changeMode(mode);
@@ -577,6 +563,18 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
 	    || code == KeyEvent.VK_ALT
 	    || code == KeyEvent.VK_META
 	    || code == KeyEvent.VK_TAB;
+    }
+
+    @Override
+    public void setCraftAmount(int amount) {
+	if(current == null) {return;}
+	ICraftParent.CraftAmounts.put(current.res().name, amount);
+    }
+
+    @Override
+    public int getCraftAmount() {
+	if(current == null) {return -1;}
+	return ICraftParent.CraftAmounts.getOrDefault(current.res().name, -1);
     }
     
     private static class RecipeListBox extends Listbox<Pagina> {
@@ -652,7 +650,7 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
 		if(res != null) {
 		    BufferedImage icon = PUtils.convolvedown(res.layer(Resource.imgc).img, ICON_SZ, CharWnd.iconfilter);
 		    
-		    Resource.AButton act = p.act();
+		    Resource.AButton act = p.button().acts();
 		    String name = "...";
 		    if(act != null) {
 			name = act.name;
@@ -676,8 +674,8 @@ public class CraftDBWnd extends WindowX implements DTarget2 {
 	
 	@Override
 	public int compare(Pagina a, Pagina b) {
-	    String an = a.act().name.toLowerCase();
-	    String bn = b.act().name.toLowerCase();
+	    String an = a.button().act().name.toLowerCase();
+	    String bn = b.button().act().name.toLowerCase();
 	    if(filter != null && !filter.isEmpty()) {
 		boolean ai = an.startsWith(filter);
 		boolean bi = bn.startsWith(filter);

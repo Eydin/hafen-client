@@ -110,18 +110,16 @@ public class Bootstrap implements UI.Receiver, UI.Runner {
 	return(ret);
     }
 
-    private void transtoken() {
-	/* XXX: Transitory, remove when appropriate. */
-	String oldtoken = getpref("savedtoken", "");
-	String tokenname = getpref("tokenname", "");
-	if((oldtoken.length() == 64) && (tokenname.length() > 0)) {
-	    setpref("savedtoken-" + tokenname, oldtoken);
-	    setpref("savedtoken", "");
-	}
+    private static String mangleuser(String user) {
+	if(user.length() <= 32)
+	    return(user);
+	/* Mangle name because Java pref names have a somewhat
+	 * ridiculously short limit. */
+	return(Utils.byte2hex(Digest.hash(Digest.MD5, user.getBytes(Utils.utf8))));
     }
 
     public static byte[] gettoken2(String user, String hostname) {
-	return(getprefb("savedtoken-" + user, hostname, null, false));
+	return(getprefb("savedtoken-" + mangleuser(user), hostname, null, false));
     }
 
     public static void rottokens2(String user, String hostname, boolean creat, boolean rm) {
@@ -135,7 +133,8 @@ public class Bootstrap implements UI.Receiver, UI.Runner {
     }
 
     public static void settoken2(String user, String hostname, byte[] token) {
-	Utils.setpref("savedtoken-" + user + "@" + hostname, (token == null) ? "" : Utils.byte2hex(token));
+	String prefnm = user;
+	Utils.setpref("savedtoken-" + mangleuser(user) + "@" + hostname, (token == null) ? "" : Utils.byte2hex(token));
 	rottokens(user, hostname, token != null, true);
     }
     
@@ -185,11 +184,10 @@ public class Bootstrap implements UI.Receiver, UI.Runner {
 
     public UI.Runner run(UI ui) throws InterruptedException {
 	ui.setreceiver(this);
-	ui.bind(ui.root.add(new LoginScreen(hostname)), 1);
+	ui.newwidgetp(1, ($1, $2) -> new LoginScreen(hostname), 0, new Object[] {Coord.z});
 	String loginname = getpref("loginname", "");
 	boolean savepw = false;
 	String tokenhex;
-	transtoken();
 	String authserver = (authserv.get() == null) ? hostname : authserv.get();
 	int authport = Bootstrap.authport.get();
 	Session sess;
@@ -207,9 +205,13 @@ public class Bootstrap implements UI.Receiver, UI.Runner {
 		this.inittoken = null;
 		authed: try(AuthClient auth = new AuthClient(authserver, authport)) {
 		    authaddr = auth.address();
-		    if(!Arrays.equals(inittoken, getprefb("lasttoken-" + inituser, hostname, null, false))) {
-			String authed = auth.trytoken(inituser, inittoken);
-			setpref("lasttoken-" + inituser, Utils.byte2hex(inittoken));
+		    if(!Arrays.equals(inittoken, getprefb("lasttoken-" + mangleuser(inituser), hostname, null, false))) {
+			String authed = null;
+			try {
+			    authed = new AuthClient.TokenCred(inituser, inittoken).tryauth(auth);
+			} catch(AuthClient.Credentials.AuthException e) {
+			}
+			setpref("lasttoken-" + mangleuser(inituser), Utils.byte2hex(inittoken));
 			if(authed != null) {
 			    acctname = authed;
 			    cookie = auth.getcookie();
@@ -219,13 +221,13 @@ public class Bootstrap implements UI.Receiver, UI.Runner {
 			}
 		    }
 		    if((token = gettoken(inituser, hostname)) != null) {
-			String authed = auth.trytoken(inituser, token);
-			if(authed == null) {
-			    settoken(inituser, hostname, null);
-			} else {
+			try {
+			    String authed = new AuthClient.TokenCred(inituser, token).tryauth(auth);
 			    acctname = authed;
 			    cookie = auth.getcookie();
 			    break authed;
+			} catch(AuthClient.Credentials.AuthException e) {
+			    settoken(inituser, hostname, null);
 			}
 		    }
 		    ui.uimsg(1, "error", "Launcher login expired");
@@ -282,21 +284,14 @@ public class Bootstrap implements UI.Receiver, UI.Runner {
 		    for(int i = 0; i < addrs.length; i++) {
 			if(i > 0)
 			    ui.uimsg(1, "prg", String.format("Connecting (address %d/%d)...", i + 1, addrs.length));
-			sess = new Session(new InetSocketAddress(addrs[i], port), acctname, cookie);
-			sess.ui = ui;
-			while(true) {
-			    synchronized(sess) {
-				if(sess.state == "") {
-				    break connect;
-				} else if(sess.connfailed != 0) {
-				    String error = sess.connerror;
-				    if(error == null)
-					error = "Connection failed";;
-				    ui.uimsg(1, "error", error);
-				    continue retry;
-				}
-				sess.wait();
-			    }
+			try {
+			    sess = new Session(new InetSocketAddress(addrs[i], port), acctname, cookie);
+			    sess.ui = ui;
+			    break connect;
+			} catch(Connection.SessionConnError err) {
+			} catch(Connection.SessionError err) {
+			    ui.uimsg(1, "error", err.getMessage());
+			    continue retry;
 			}
 		    }
 		    ui.uimsg(1, "error", "Could not connect to server");

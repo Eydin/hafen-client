@@ -1,0 +1,133 @@
+{
+  "paginae/wound/addervenom": [
+    "gfx/invobjs/jar-snakejuice"
+  ],
+  "paginae/wound/antburn": [
+    "gfx/invobjs/herbs/yarrow"
+  ],
+  "paginae/wound/beesting": [
+    "gfx/invobjs/antpaste",
+    "gfx/invobjs/graygrease",
+    "gfx/invobjs/kelpcream"
+  ],
+  "paginae/wound/blackeye": [
+    "gfx/invobjs/coldcut",
+    "gfx/invobjs/hartshornsalve",
+    "gfx/invobjs/honeybroadaid",
+    "gfx/invobjs/toadbutter"
+  ],
+  "paginae/wound/bladekiss": [
+    "gfx/invobjs/gauze",
+    "gfx/invobjs/toadbutter"
+  ],
+  "paginae/wound/blunttrauma": [
+    "gfx/invobjs/camomilecompress",
+    "gfx/invobjs/gauze",
+    "gfx/invobjs/hartshornsalve",
+    "gfx/invobjs/jar-willowweep",
+    "gfx/invobjs/leech",
+    "gfx/invobjs/opium",
+    "gfx/invobjs/toadbutter"
+  ],
+  "paginae/wound/bruise": [
+    "gfx/invobjs/jar-willowweep",
+    "gfx/invobjs/leech"
+  ],
+  "paginae/wound/coalcough": [
+    "gfx/invobjs/opium"
+  ],
+  "paginae/wound/concussion": [
+    "gfx/invobjs/coldcompress",
+    "gfx/invobjs/jar-willowweep",
+    "gfx/invobjs/opium"
+  ],
+  "paginae/wound/crabcaressed": [
+    "gfx/invobjs/antpaste"
+  ],
+  "paginae/wound/cruelincision": [
+    "gfx/invobjs/gauze",
+    "gfx/invobjs/rootfill",
+    "gfx/invobjs/stitchpatch"
+  ],
+  "paginae/wound/deepcut": [
+    "gfx/invobjs/coldcut",
+    "gfx/invobjs/gauze",
+    "gfx/invobjs/herbs/waybroad",
+    "gfx/invobjs/honeybroadaid",
+    "gfx/invobjs/rootfill",
+    "gfx/invobjs/stingingpoultice"
+  ],
+  "paginae/wound/fellslash": [
+    "gfx/invobjs/gauze"
+  ],
+  "paginae/wound/infectedsore": [
+    "gfx/invobjs/antpaste",
+    "gfx/invobjs/camomilecompress",
+    "gfx/invobjs/opium",
+    "gfx/invobjs/soapbar"
+  ],
+  "paginae/wound/jellysting": [
+    "gfx/invobjs/graygrease"
+  ],
+  "paginae/wound/leechburns": [
+    "gfx/invobjs/toadbutter"
+  ],
+  "paginae/wound/midgebite": [
+    "gfx/invobjs/herbs/yarrow"
+  ],
+  "paginae/wound/nastylaceration": [
+    "gfx/invobjs/stitchpatch",
+    "gfx/invobjs/toadbutter"
+  ],
+  "paginae/wound/nicksnknacks": [
+    "gfx/invobjs/herbs/yarrow",
+    "gfx/invobjs/honeybroadaid"
+  ],
+  "paginae/wound/punchsore": [
+    "gfx/invobjs/jar-willowweep",
+    "gfx/invobjs/mudointment",
+    "gfx/invobjs/opium"
+  ],
+  "paginae/wound/sandfleabites": [
+    "gfx/invobjs/graygrease",
+    "gfx/invobjs/herbs/yarrow"
+  ],
+  "paginae/wound/scrapesncuts": [
+    "gfx/invobjs/herbs/yarrow",
+    "gfx/invobjs/honeybroadaid",
+    "gfx/invobjs/mudointment"
+  ],
+  "paginae/wound/sealfinger": [
+    "gfx/invobjs/antpaste",
+    "gfx/invobjs/hartshornsalve",
+    "gfx/invobjs/kelpcream"
+  ],
+  "paginae/wound/severemauling": [
+    "gfx/invobjs/hartshornsalve",
+    "gfx/invobjs/opium"
+  ],
+  "paginae/wound/somethingbroken": [
+    "gfx/invobjs/splint"
+  ],
+  "paginae/wound/soresnout": [
+    "gfx/invobjs/mudointment"
+  ],
+  "paginae/wound/swampfever": [
+    "gfx/invobjs/jar-snakejuice"
+  ],
+  "paginae/wound/swollenbump": [
+    "gfx/invobjs/coldcompress",
+    "gfx/invobjs/coldcut",
+    "gfx/invobjs/leech",
+    "gfx/invobjs/stingingpoultice"
+  ],
+  "paginae/wound/unfaced": [
+    "gfx/invobjs/kelpcream",
+    "gfx/invobjs/leech",
+    "gfx/invobjs/mudointment",
+    "gfx/invobjs/toadbutter"
+  ],
+  "paginae/wound/wretchedgore": [
+    "gfx/invobjs/stitchpatch"
+  ]
+}

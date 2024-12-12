@@ -1,0 +1,1 @@
+[{"name":"THE JUICE","recipe":{"res":"paginae/craft/mushroomdecoction","sub":[{"res":"gfx/invobjs/herbs/spindlytaproot"},{"res":"gfx/invobjs/greenschist"},{"res":"gfx/invobjs/herbs/chantrelle"}]},"effects":["buff:gfx/hud/chr/unarmed:2","buff:gfx/hud/chr/melee:1","buff:gfx/hud/chr/con:1","buff:gfx/hud/chr/agi:1","wound:paginae/wound/chillsandnausea:9"]}]

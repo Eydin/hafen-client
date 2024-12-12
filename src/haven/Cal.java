@@ -27,8 +27,6 @@
 package haven;
 
 import static java.lang.Math.PI;
-import java.awt.Graphics;
-import java.awt.image.BufferedImage;
 
 public class Cal extends Widget {
     public static final double hbr = UI.scale(20.0);
@@ -58,8 +56,8 @@ public class Cal extends Widget {
 	int mp = (int)Math.round(a.mp * (double)moon.f.length) % moon.f.length;
 	Resource.Image moon = Cal.moon.f[mp][0];
 	Resource.Image sun = Cal.sun.f[(int)((now / Cal.sun.d) % Cal.sun.f.length)][0];
-	Coord mc = Coord.sc((a.dt + 0.25) * 2 * PI, hbr).add(sz.div(2)).sub(moon.sz.div(2));
-	Coord sc = Coord.sc((a.dt + 0.75) * 2 * PI, hbr).add(sz.div(2)).sub(sun.sz.div(2));
+	Coord mc = Coord.sc((a.dt + 0.25) * 2 * PI, hbr).add(sz.div(2)).sub(moon.ssz.div(2));
+	Coord sc = Coord.sc((a.dt + 0.75) * 2 * PI, hbr).add(sz.div(2)).sub(sun.ssz.div(2));
 	g.chcolor(a.mc);
 	g.image(moon, mc);
 	g.chcolor();
@@ -85,18 +83,15 @@ public class Cal extends Widget {
     }
 
     public Object tooltip(Coord c, Widget prev) {
-	if(checkhit(c)) {
-	    Astronomy a = ui.sess.glob.ast;
-	    int mp = (int)Math.round(a.mp * (double)moon.f.length) % moon.f.length;
-	    String season = String.format("Season: %s, day %d of %d", a.season(), a.scday + 1, a.season().length);
-	    int day = (int) Math.floor(a.md) + 1, month = (int) Math.floor(a.ym) + 1, year = (int) Math.floor(a.years) + 1;
-	    String tt = String.format("%02d-%02d-%02d, %02d:%02d\n%s\nMoon: %s", day, month, year, a.hh, a.mm, season, Astronomy.phase[mp]);
-	    if(!tt.equals(tip)) {
-		tip = tt;
-		tooltip = RichText.render(tt, UI.scale(250));
-	    }
-	    return tooltip;
+	Astronomy a = ui.sess.glob.ast;
+	int mp = (int)Math.round(a.mp * (double)moon.f.length) % moon.f.length;
+	String season = String.format("Season: %s, day %d of %d", L10N.label(a.season().toString()), a.scday + 1, a.season().length);
+	int day = (int) Math.floor(a.md) + 1, month = (int) Math.floor(a.ym) + 1, year = (int) Math.floor(a.years) + 1;
+	String tt = String.format("%02d-%02d-%02d, %02d:%02d\n%s\n" + L10N.label("Moon: ") + "%s", day, month, year, a.hh, a.mm, L10N.label(season), L10N.label(Astronomy.phase[mp]));
+	if(!tt.equals(tip)) {
+	    tip = tt;
+	    tooltip = RichText.render(tt, UI.scale(250));
 	}
-	return(super.tooltip(c, prev));
+	return tooltip;
     }
 }

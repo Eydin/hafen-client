@@ -948,5 +948,6 @@
 	"paginae/seid/spark": "Разжечь Огонь",
 	"paginae/seid/stargaze": "Звездный взгляд",
 	"paginae/seid/vincant": "Чары Мести",
-	"ui/tt/q/quality": "Отобразить качество предметов"
+	"ui/tt/q/quality": "Отобразить качество предметов",
+	"paginae/act/drink": "Пить"
 }

@@ -1,9 +1,12 @@
 package haven;
 
 import haven.QualityList.SingleType;
+import haven.res.ui.tt.gast.Gast;
 import haven.resutil.Curiosity;
 import haven.resutil.FoodInfo;
+import me.ender.ClientUtils;
 import me.ender.Reflect;
+import me.ender.alchemy.Effect;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -100,6 +103,15 @@ public class ItemFilter {
 	"$font[monospaced,13]{  attr:survival }will find all items that grant survival.\n" +
 	"$font[monospaced,13]{  attr:str>2    }will find items granting more than 2 str bonus.\n" +
 	"$font[monospaced,13]{  attr:agi<0    }will find items giving agility penalty.\n";
+
+    public static final String HELP_EFF = "$size[20]{$b{Alchemy ingredient effect search}}\n" +
+	"$font[monospaced,16]{eff:[name]} or $font[monospaced,16]{effect:[name]}\n" +
+	"Will highlight ingredients that have known effect with $font[monospaced,13]{[name]} or have any known effects if $font[monospaced,13]{[name]} is empty.\n" +
+	"$font[monospaced,13]{[name]} can be any attribute, skill or wound name that can be in elixir effects.\n" +
+	"$size[16]{\nExamples:}\n" +
+	"$font[monospaced,13]{  eff:lore  }will find all ingredients that have increase Lore effect.\n" +
+	"$font[monospaced,13]{  eff:jelly }will find all ingredients that have heal Jellyfish Sting effect.\n" +
+	"$font[monospaced,13]{  eff:dur   }will find all ingredients that have elixir duration increase/decrease effects.\n";
     
     public static final String HELP_INPUTS = "$size[20]{$b{Crafting inputs search}}\n" +
 	"$font[monospaced,16]{use:[what][sign][value]}\n" +
@@ -109,9 +121,10 @@ public class ItemFilter {
 	"$font[monospaced,13]{  use:snow   }will find all items that require snow to craft.\n" +
 	"$font[monospaced,13]{  use:iron>2 }will find items that require more that 2 iron bars/ingots to craft.\n";
     
-    public static final String[] FILTER_HELP = {HELP_SIMPLE, HELP_FULL_TEXT, HELP_CONTENT, HELP_QUALITY, HELP_CURIO, HELP_FEP, HELP_ARMOR, HELP_SYMBEL, HELP_ATTR, HELP_INPUTS};
+    public static final String[] FILTER_HELP = {HELP_SIMPLE, HELP_FULL_TEXT, HELP_CONTENT, HELP_QUALITY, HELP_CURIO, HELP_FEP, HELP_ARMOR, HELP_SYMBEL, HELP_ATTR, HELP_EFF, HELP_INPUTS};
     
     public boolean matches(List<ItemInfo> info) {
+	if(info == null || info.isEmpty()) {return false;}
 	for (ItemInfo item : info) {
 	    if(match(item)) {return true;}
 	}
@@ -119,16 +132,8 @@ public class ItemFilter {
 
     }
     
-    final public boolean matches(ItemData data, Session sess) {
-	return data != null && matches(data.iteminfo(sess));
-    }
-
-    final public boolean matches(MenuGrid.Pagina pagina, Session sess) {
-	List<ItemInfo> infos = pagina.info();
-	if(infos == null || infos.isEmpty()){
-	    return matches(ItemData.get(pagina), sess);
-	}
-	return matches(infos);
+    final public boolean matches(MenuGrid.Pagina pagina) {
+	return matches(pagina.button().info());
     }
 
     protected boolean match(ItemInfo item) { return false; }
@@ -216,6 +221,10 @@ public class ItemFilter {
 		    case "use":
 		    case "uses":
 			filter = new Inputs(text, sign, value, opt);
+			break;
+		    case "eff":
+		    case "effect":
+			filter = new Effects(text, sign, value, opt);
 			break;
 		}
 	    }
@@ -329,35 +338,19 @@ public class ItemFilter {
 	}
 
 	@Override
-	protected boolean match(ItemInfo item) {
-	    if(item instanceof ItemInfo.Contents) {
-		String name = this.name(((ItemInfo.Contents) item).sub);
-		if(name != null) {
-		    name = name.toLowerCase();
-		    return name.contains(text) && test(count(name));
-		}
+	public boolean matches(List<ItemInfo> infos) {
+	    ItemData.Content content = ItemInfo.getContent(infos);
+	    if(!content.empty()) {
+		return content.name.toLowerCase().contains(text) && test(content.count);
 	    }
-	    return false;
+	    return match(QualityList.make(infos));
 	}
 
 	@Override
 	protected Sign getDefaultSign() {
 	    return Sign.GREQUAL;
 	}
-
-	private float count(String txt) {
-	    float n = 0;
-	    if(txt != null) {
-		try {
-		    Matcher matcher = float_p.matcher(txt);
-		    if(matcher.find()) {
-			n = Float.parseFloat(matcher.group(1));
-		    }
-		} catch (Exception ignored) {}
-	    }
-	    return n;
-	}
-
+	
 	private String name(List<ItemInfo> sub) {
 	    ItemInfo.Name name = ItemInfo.find(ItemInfo.Name.class, sub);
 	    return name != null ? name.str.text : null;
@@ -521,9 +514,9 @@ public class ItemFilter {
 	    if(item instanceof FoodInfo) {
 		FoodInfo food = (FoodInfo) item;
 		if("energy".equals(text)) {
-		    return test(Utils.round(100 * food.end, 2));
+		    return test(ClientUtils.round(100 * food.end, 2));
 		} else if("hunger".equals(text)) {
-		    return test(Utils.round(100 * food.glut, 2));
+		    return test(ClientUtils.round(100 * food.glut, 2));
 		}
 	    }
 	    return false;
@@ -589,15 +582,16 @@ public class ItemFilter {
 	
 	@Override
 	protected boolean match(ItemInfo item) {
-	    if(Reflect.is(item, "Gast")) {
+	    if(item instanceof Gast) {
+		Gast gast = (Gast) item;
 		if(text.isEmpty()) {
 		    return true;
 		}
 		if("fep".startsWith(text)) {
-		    return test(Utils.round(100D * Reflect.getFieldValueDouble(item, "fev"), 1));
+		    return test(ClientUtils.round(100D * gast.fev, 1));
 		}
 		if("hunger".startsWith(text)) {
-		    return test(Utils.round(100D * Reflect.getFieldValueDouble(item, "glut"), 1));
+		    return test(ClientUtils.round(100D * gast.glut, 1));
 		}
 	    }
 	    return false;
@@ -642,6 +636,30 @@ public class ItemFilter {
 		    }
 		}
 	    }
+	    return false;
+	}
+    }
+
+    private static class Effects extends Complex {
+
+	public Effects(String text, String sign, String value, String opts) {
+	    super(text, sign, value, opts);
+	}
+
+	@Override
+	public boolean matches(List<ItemInfo> infos) {
+	    for (ItemInfo info : infos) {
+		String name = Effect.name(info);
+		if(text.isEmpty()) {
+		    if(name.isEmpty()) {
+			continue;
+		    } else {
+			return true;
+		    }
+		}
+		if(name.toLowerCase().contains(text)) {return true;}
+	    }
+
 	    return false;
 	}
     }

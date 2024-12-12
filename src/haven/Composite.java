@@ -40,6 +40,7 @@ import static haven.Composited.MD;
 public class Composite extends Drawable implements EquipTarget {
     public final static float ipollen = 0.2f;
     public final Indir<Resource> base;
+    public final Resource baseres;
     public final Composited comp;
     public int pseq;
     public List<MD> nmod;
@@ -49,15 +50,17 @@ public class Composite extends Drawable implements EquipTarget {
     private float tptime;
     private WrapMode tpmode;
     private List<MD> nmod2;
-    boolean changed = false;
+    boolean changed = true;
     private String resId = null;
     private List<String> poses = new LinkedList<>();
     
     public Composite(Gob gob, Indir<Resource> base) {
 	super(gob);
 	this.base = base;
-	comp = new Composited(base.get().layer(Skeleton.Res.class).s);
+	this.baseres = base.get();
+	comp = new Composited(baseres.layer(Skeleton.Res.class).s);
 	comp.eqowner = gob;
+	processResId();
     }
     
     public void added(RenderTree.Slot slot) {
@@ -143,7 +146,7 @@ public class Composite extends Drawable implements EquipTarget {
     }
 
     public Resource getres() {
-	return(base.get());
+	return(baseres);
     }
 
     @Override
@@ -151,11 +154,10 @@ public class Composite extends Drawable implements EquipTarget {
 	return base;
     }
     
-    public Pose getpose() {
-	return(comp.pose);
-    }
-
     public Supplier<Pipe.Op> eqpoint(String nm, Message dat) {
+	Skeleton.BoneOffset bo = baseres.layer(Skeleton.BoneOffset.class, nm);
+	if(bo != null)
+	    return(bo.from(comp));
 	return(comp.eqpoint(nm, dat));
     }
     
@@ -166,20 +168,10 @@ public class Composite extends Drawable implements EquipTarget {
 	nposesold = !interp;
     }
     
-    @Deprecated
-    public void chposes(List<Indir<Resource>> poses, boolean interp) {
-	chposes(ResData.wrap(poses), interp);
-    }
-
     public void tposes(Collection<ResData> poses, WrapMode mode, float time) {
 	this.tposes = poses;
 	this.tpmode = mode;
 	this.tptime = time;
-    }
-    
-    @Deprecated
-    public void tposes(List<Indir<Resource>> poses, WrapMode mode, float time) {
-	tposes(ResData.wrap(poses), mode, time);
     }
 
     public void chmod(List<MD> mod) {
@@ -197,7 +189,7 @@ public class Composite extends Drawable implements EquipTarget {
 
     @OCache.DeltaType(OCache.OD_COMPOSE)
     public static class $composite implements OCache.Delta {
-	public void apply(Gob g, Message msg) {
+	public void apply(Gob g, OCache.AttrDelta msg) {
 	    Indir<Resource> base = OCache.Delta.getres(g, msg.uint16());
 	    Drawable dr = g.getattr(Drawable.class);
 	    Composite cmp = (dr instanceof Composite)?(Composite)dr:null;
@@ -210,7 +202,7 @@ public class Composite extends Drawable implements EquipTarget {
 
     @OCache.DeltaType(OCache.OD_CMPPOSE)
     public static class $cmppose implements OCache.Delta {
-	public void apply(Gob g, Message msg) {
+	public void apply(Gob g, OCache.AttrDelta msg) {
 	    List<ResData> poses = null, tposes = null;
 	    int pfl = msg.uint8();
 	    int pseq = msg.uint8();
@@ -262,7 +254,7 @@ public class Composite extends Drawable implements EquipTarget {
 
     @OCache.DeltaType(OCache.OD_CMPMOD)
     public static class $cmpmod implements OCache.Delta {
-	public void apply(Gob g, Message msg) {
+	public void apply(Gob g, OCache.AttrDelta msg) {
 	    List<Composited.MD> mod = new LinkedList<Composited.MD>();
 	    int mseq = 0;
 	    while(true) {
@@ -295,7 +287,7 @@ public class Composite extends Drawable implements EquipTarget {
 
     @OCache.DeltaType(OCache.OD_CMPEQU)
     public static class $cmpequ implements OCache.Delta {
-	public void apply(Gob g, Message msg) {
+	public void apply(Gob g, OCache.AttrDelta msg) {
 	    List<Composited.ED> equ = new LinkedList<Composited.ED>();
 	    int eseq = 0;
 	    while(true) {
@@ -334,13 +326,13 @@ public class Composite extends Drawable implements EquipTarget {
     public String resId() { return resId; }
     
     private String makeResId() {
-	if(nmod2 == null) {return resId;}
+	String name = baseres.name;
+	boolean isBorka = "gfx/borka/body".equals(name);
+	if(nmod2 == null) {return isBorka ? null : name;}
 	
 	Set<String> res = new HashSet<>();
-	String name;
 	try {
-	    name = base.get().name;
-	    if("gfx/borka/body".equals(name)) {
+	    if(isBorka) {
 		for (MD mod : nmod2) {
 		    if(mod.mod.get().name.contains("gfx/terobjs/mannequin")) {
 			return "gfx/terobjs/mannequin";

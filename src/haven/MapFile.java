@@ -42,7 +42,7 @@ import static haven.MCache.cmaps;
 import static me.ender.minimap.AutoMarkers.*;
 
 public class MapFile {
-    public static final Config.Variable<java.net.URL> mapbase = Config.Variable.propu("haven.mapbase", "");
+    public static final Config.Variable<java.net.URI> mapbase = Config.Variable.propu("haven.mapbase", "");
     public static boolean debug = false;
     public final ResCache store;
     public final String filename;
@@ -108,7 +108,7 @@ public class MapFile {
 		for(int i = 0, no = data.int32(); i < no; i++) {
 		    Marker mark = loadmarker(data);
 		    file.markers.add(mark);
-		    if(mark instanceof SMarker)
+		    if((mark instanceof SMarker) && (((SMarker)mark).oid != 0))
 			file.smarkers.put(((SMarker)mark).oid, (SMarker)mark);
 		}
 	    } else {
@@ -296,9 +296,9 @@ public class MapFile {
 
     public static class SMarkerOld extends MarkerOld {
 	public long oid;
-	public Resource.Spec res;
+	public Resource.Saved res;
 
-	public SMarkerOld(long seg, Coord tc, String nm, long oid, Resource.Spec res) {
+	public SMarkerOld(long seg, Coord tc, String nm, long oid, Resource.Saved res) {
 	    super(seg, tc, nm);
 	    this.oid = oid;
 	    this.res = res;
@@ -318,7 +318,7 @@ public class MapFile {
 		return(new PMarker(seg, tc, nm, color));
 	    case 's':
 		long oid = fp.int64();
-		Resource.Spec res = new Resource.Spec(Resource.remote(), fp.string(), fp.uint16());
+		Resource.Saved res = new Resource.Saved(Resource.remote(), fp.string(), fp.uint16());
 		return(new SMarker(seg, tc, nm, oid, res));
 	    default:
 		throw(new Message.FormatError("Unknown marker type: " + (int)type));
@@ -341,7 +341,7 @@ public class MapFile {
 	    fp.adduint8('s');
 	    fp.addint64(sm.oid);
 	    fp.addstring(sm.res.name);
-	    fp.adduint16(sm.res.ver);
+	    fp.adduint16(sm.res.savever());
 	} else {
 	    throw(new ClassCastException("Can only save PMarkers and SMarkers"));
 	}
@@ -351,7 +351,7 @@ public class MapFile {
 	lock.writeLock().lock();
 	try {
 	    if(markers.add(mark)) {
-		if(mark instanceof SMarker)
+		if((mark instanceof SMarker) && (((SMarker)mark).oid != 0))
 		    smarkers.put(((SMarker)mark).oid, (SMarker)mark);
 		defersave();
 		markerseq++;
@@ -365,7 +365,7 @@ public class MapFile {
 	lock.writeLock().lock();
 	try {
 	    if(markers.remove(mark)) {
-		if(mark instanceof SMarker)
+		if((mark instanceof SMarker) && (((SMarker)mark).oid != 0))
 		    smarkers.remove(((SMarker)mark).oid, (SMarker)mark);
 		defersave();
 		markerseq++;
@@ -387,20 +387,31 @@ public class MapFile {
 	}
     }
 
+    public SMarker smarker(String resnm, long seg, Coord tc) {
+	for(Marker mark : markers) {
+	    if(!(mark instanceof SMarker))
+		continue;
+	    SMarker sm = (SMarker)mark;
+	    if(sm.res.name.equals(resnm) && (sm.seg == seg) && sm.tc.equals(tc))
+		return(sm);
+	}
+	return(null);
+    }
+
     public static class TileInfo {
-	public final Resource.Spec res;
+	public final Resource.Saved res;
 	public final int prio;
 
-	public TileInfo(Resource.Spec res, int prio) {
+	public TileInfo(Resource.Saved res, int prio) {
 	    this.res = res; this.prio = prio;
 	}
     }
 
     public static class Overlay {
-	public final Resource.Spec olid;
+	public final Resource.Saved olid;
 	public final boolean[] ol;
 
-	public Overlay(Resource.Spec olid, boolean[] ol) {
+	public Overlay(Resource.Saved olid, boolean[] ol) {
 	    this.olid = olid;
 	    this.ol = ol;
 	}
@@ -436,7 +447,7 @@ public class MapFile {
 	    if(!cached[t]) {
 		Resource r = null;
 		try {
-		    r = tilesets[t].res.loadsaved(Resource.remote());
+		    r = tilesets[t].res.get();
 		} catch(Loading l) {
 		    throw(l);
 		} catch(Exception e) {
@@ -506,7 +517,7 @@ public class MapFile {
 	public BufferedImage olrender(Coord off, String tag) {
 	    WritableRaster buf = PUtils.imgraster(cmaps);
 	    for(Overlay ol : ols) {
-		MCache.ResOverlay olid = ol.olid.loadsaved().flayer(MCache.ResOverlay.class);
+		MCache.ResOverlay olid = ol.olid.get().flayer(MCache.ResOverlay.class);
 		if(!olid.tags().contains(tag))
 		    continue;
 		Color col = olcol(olid);
@@ -531,7 +542,7 @@ public class MapFile {
 	    fp.adduint16(tilesets.length);
 	    for(int i = 0; i < tilesets.length; i++) {
 		fp.addstring(tilesets[i].res.name);
-		fp.adduint16(tilesets[i].res.ver);
+		fp.adduint16(tilesets[i].res.savever());
 		fp.adduint8(tilesets[i].prio);
 	    }
 	    if(tilesets.length <= 256) {
@@ -546,7 +557,7 @@ public class MapFile {
 	public static Pair<TileInfo[], int[]> loadtiles(Message fp, int ver) {
 	    TileInfo[] tilesets = new TileInfo[(ver >= 2) ? fp.uint16() : fp.uint8()];
 	    for(int i = 0; i < tilesets.length; i++)
-		tilesets[i] = new TileInfo(new Resource.Spec(Resource.remote(), fp.string(), fp.uint16()), fp.uint8());
+		tilesets[i] = new TileInfo(new Resource.Saved(Resource.remote(), fp.string(), fp.uint16()), fp.uint8());
 	    int[] tiles = new int[cmaps.x * cmaps.y];
 	    if(tilesets.length <= 256) {
 		for(int i = 0; i < cmaps.x * cmaps.y; i++)
@@ -628,7 +639,7 @@ public class MapFile {
 	public static void saveols(Message fp, Collection<Overlay> ols) {
 	    for(Overlay ol : ols) {
 		fp.addstring(ol.olid.name);
-		fp.adduint16(ol.olid.ver);
+		fp.adduint16(ol.olid.savever());
 		for(int i = 0; i < ol.ol.length; i += 8) {
 		    int b = 0;
 		    for(int o = 0; o < Math.min(8, ol.ol.length - i); o++) {
@@ -655,11 +666,11 @@ public class MapFile {
 			    ol[i + o] = true;
 		    }
 		}
-		buf.add(new Overlay(new Resource.Spec(Resource.remote(), resnm, resver), ol));
+		buf.add(new Overlay(new Resource.Saved(Resource.remote(), resnm, resver), ol));
 	    }
 	}
 
-	public static final Resource.Spec notile = new Resource.Spec(Resource.remote(), "gfx/tiles/notile", -1);
+	public static final Resource.Saved notile = new Resource.Saved(Resource.remote(), "gfx/tiles/notile", -1);
 	public static final DataGrid nogrid;
 	static {
 	    nogrid = new DataGrid(new TileInfo[] {new TileInfo(notile, 0)}, new int[cmaps.x * cmaps.y], new float[cmaps.x * cmaps.y], 0);
@@ -700,7 +711,8 @@ public class MapFile {
 	    int[] prios = new int[nt];
 	    for(int i = 0; i < nt; i++) {
 		int tn = rmap[i];
-		infos[i] = new TileInfo(map.tilesetn(tn), prios[i]);
+		Resource.Spec tile = map.tilesetn(tn);
+		infos[i] = new TileInfo(new Resource.Saved(tile.pool, tile.name, tile.ver), prios[i]);
 		norepl[i] = (Utils.index(Loading.waitfor(() -> map.tileset(tn)).tags, "norepl") >= 0);
 	    }
 	    for(int i = 0, tn = 0; i < tmap.length; i++) {
@@ -718,7 +730,7 @@ public class MapFile {
 		if(cg.ol[i].length != (cmaps.x * cmaps.y))
 		    throw(new AssertionError(String.valueOf(cg.ol[i].length)));
 		Resource olres = Loading.waitfor(cg.ols[i]);
-		g.ols.add(new Overlay(new Resource.Spec(olres.pool, olres.name, olres.ver), Arrays.copyOf(cg.ol[i], cg.ol[i].length)));
+		g.ols.add(new Overlay(new Resource.Saved(olres.pool, olres.name, olres.ver), Arrays.copyOf(cg.ol[i], cg.ol[i].length)));
 	    }
 	    g.norepl = norepl;
 	    g.useq = oseq;
@@ -892,7 +904,7 @@ public class MapFile {
 		    if(lower[i] == null)
 			continue;
 		    for(int tn = 0; tn < lower[i].tilesets.length; tn++) {
-			Resource.Spec set = lower[i].tilesets[tn].res;
+			Resource.Saved set = lower[i].tilesets[tn].res;
 			if(pool == null)
 			    pool = set.pool;
 			vers.put(set.name, Math.max(vers.getOrDefault(set.name, 0), set.ver));
@@ -907,7 +919,7 @@ public class MapFile {
 		infos = new TileInfo[nt];
 		rinfos = new HashMap<>();
 		for(int i = 0; i < nt; i++) {
-		    infos[i] = new TileInfo(new Resource.Spec(pool, sets[i], vers.get(sets[i])), i);
+		    infos[i] = new TileInfo(new Resource.Saved(pool, sets[i], vers.get(sets[i])), i);
 		    rinfos.put(sets[i], i);
 		}
 	    }
@@ -1274,7 +1286,7 @@ public class MapFile {
     public static class View implements MapSource {
 	public final Segment seg;
 	private final Map<Coord, GridMap> grids = new HashMap<>();
-	private Resource.Spec[] nsets;
+	private Resource.Saved[] nsets;
 	private Tileset[] tilesets;
 	private Tiler[] tiles;
 
@@ -1319,7 +1331,7 @@ public class MapFile {
 	}
 
 	public void fin() {
-	    Map<String, Resource.Spec> vermap = new HashMap<>();
+	    Map<String, Resource.Saved> vermap = new HashMap<>();
 	    TopoSort<String> tilesort = new TileSort();
 	    for(GridMap gm : grids.values()) {
 		if(gm == null)
@@ -1336,7 +1348,7 @@ public class MapFile {
 		tilesort.add(order);
 	    }
 	    String[] ordered = tilesort.sort().toArray(new String[0]);
-	    Resource.Spec[] nsets = new Resource.Spec[ordered.length];
+	    Resource.Saved[] nsets = new Resource.Saved[ordered.length];
 	    for(int i = 0; i < ordered.length; i++)
 		nsets[i] = vermap.get(ordered[i]);
 	    Map<String, Integer> idx = new HashMap<>();
@@ -1387,7 +1399,7 @@ public class MapFile {
 
 	public Tileset tileset(int n) {
 	    if(tilesets[n] == null) {
-		Resource res = nsets[n].loadsaved(Resource.remote());
+		Resource res = nsets[n].get();
 		tilesets[n] = res.flayer(Tileset.class);
 	    }
 	    return(tilesets[n]);
@@ -1735,7 +1747,7 @@ public class MapFile {
 	    } else {
 		tilesets = new TileInfo[data.uint8()];
 		for(int i = 0; i < tilesets.length; i++)
-		    tilesets[i] = new TileInfo(new Resource.Spec(Resource.remote(), data.string(), data.uint16()), data.uint8());
+		    tilesets[i] = new TileInfo(new Resource.Saved(Resource.remote(), data.string(), data.uint16()), data.uint8());
 		if(ver >= 2) {
 		    int len = data.int32();
 		    if(len != (cmaps.x * cmaps.y))
@@ -1899,7 +1911,7 @@ public class MapFile {
 		if((pm.getClass() != mark.getClass()) || !pm.nm.equals(mark.nm) || !pm.tc.equals(mark.tc))
 		    continue;
 		if(pm instanceof SMarker) {
-		    if(((SMarker)pm).oid != ((SMarker)mark).oid)
+		    if(!((SMarker)pm).res.name.equals(((SMarker)mark).res.name))
 			continue;
 		}
 		return(pm);

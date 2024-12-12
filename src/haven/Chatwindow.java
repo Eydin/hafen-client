@@ -28,7 +28,7 @@ package haven;
 
 import java.io.PrintWriter;
 
-public class Chatwindow extends WindowX {
+public class Chatwindow extends WindowX implements Console.Host {
     private static final PrintWriter stdout = new PrintWriter(System.out);
     public final TextEntry in;
     public final Textlog out;
@@ -45,9 +45,9 @@ public class Chatwindow extends WindowX {
 
     public Chatwindow(Coord sz) {
 	super(sz, "Chat");
-	in = adda(new TextEntry(sz.x, ""), 0, asz.y, 0.0, 1.0);
+	in = adda(new TextEntry(sz.x, ""), 0, sz.y, 0.0, 1.0);
 	in.canactivate = true;
-	out = add(new Textlog(new Coord(asz.x, in.c.y)), Coord.z);
+	out = add(new Textlog(new Coord(sz.x, in.c.y)), Coord.z);
     }
 
     private void stdin() {
@@ -69,7 +69,7 @@ public class Chatwindow extends WindowX {
 			PrintWriter prev = ui.cons.out;
 			try {
 			    ui.cons.out = stdout;
-			    ui.cons.run(cmd.substring(1));
+			    ui.cons.run(this, cmd.substring(1));
 			    stdout.flush();
 			} catch(Exception e) {
 			    String msg = e.getMessage();

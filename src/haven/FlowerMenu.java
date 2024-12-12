@@ -26,7 +26,7 @@
 
 package haven;
 
-import auto.Bot;
+import auto.*;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import haven.rx.Reactor;
@@ -46,7 +46,7 @@ public class FlowerMenu extends Widget {
     public static final String PICK_ALL = "#Pick All";
     public static final FlowerList.AutoChooseCFG AUTOCHOOSE;
     private static final Gson gson;
-    private static Bot.Target target;
+    private static ITarget target;
     public final String[] options;
     private Petal autochoose;
     private String[] forceChoose;
@@ -75,14 +75,14 @@ public class FlowerMenu extends Widget {
     }
     
     public static void lastGob(Gob gob) {
-	target = new Bot.Target(gob);
+	target = new GobTarget(gob);
     }
     
     public static void lastItem(WItem item) {
-	target = new Bot.Target(item);
+	target = new ItemTarget(item);
     }
     
-    public static void lastTarget(Bot.Target target) {
+    public static void lastTarget(ITarget target) {
 	FlowerMenu.target = target;
     }
     
@@ -137,7 +137,7 @@ public class FlowerMenu extends Widget {
 	    g.image(text.tex(), sz.div(2).sub(text.sz().div(2)));
 	}
 
-	public boolean mousedown(Coord c, int button) {
+	public boolean mousedown(MouseDownEvent ev) {
 	    choose(this);
 	    return(true);
 	}
@@ -335,10 +335,10 @@ public class FlowerMenu extends Widget {
 	new Opening().ntick(0);
     }
 
-    public boolean mousedown(Coord c, int button) {
+    public boolean mousedown(MouseDownEvent ev) {
 	if(!anims.isEmpty())
 	    return(true);
-	if(!super.mousedown(c, button))
+	if(!ev.propagate(this))
 	    choose(null);
 	return(true);
     }
@@ -349,7 +349,7 @@ public class FlowerMenu extends Widget {
 	    mg.remove();
 	    kg.remove();
 	} else if(msg == "act") {
-	    new Chosen(opts[(Integer)args[0]]);
+	    new Chosen(opts[Utils.iv(args[0])]);
 	    mg.remove();
 	    kg.remove();
 	}
@@ -359,10 +359,9 @@ public class FlowerMenu extends Widget {
 	super.draw(g, false);
     }
 
-    public boolean keydown(java.awt.event.KeyEvent ev) {
-	char key = ev.getKeyChar();
-	if((key >= '0') && (key <= '9')) {
-	    int opt = (key == '0')?10:(key - '1');
+    public boolean keydown(KeyDownEvent ev) {
+	if((ev.c >= '0') && (ev.c <= '9')) {
+	    int opt = (ev.c == '0') ? 9 : (ev.c - '1');
 	    if(opt < opts.length) {
 		choose(opts[opt]);
 		kg.remove();
@@ -373,7 +372,7 @@ public class FlowerMenu extends Widget {
 	    kg.remove();
 	    return(true);
 	}
-	return(false);
+	return(super.keydown(ev));
     }
 
     public void choose(Petal option) {
@@ -388,14 +387,15 @@ public class FlowerMenu extends Widget {
 	if(num != -1) {
 	    ui.pathQueue().ifPresent(pathQueue -> pathQueue.click(target));
 	    if(PICK_ALL.equals(options[num])) {
-		if(target != null && target.gob != null) {
+		Gob gob = Targets.gob(target);
+		if(gob != null) {
 		    try {
-			Bot.pickup(ui.gui, target.gob.getres().name);
+			Actions.pickup(ui.gui, gob.resid());
 		    } catch (Exception ignored) {}
 		}
 		num = -1;
 	    } else if("Prospect".equals(options[num]) && target != null) {
-		ProspectingWnd.item(target.item);
+		ProspectingWnd.item(Targets.item(target));
 	    }
 	}
 	Choice choice = new Choice(num != -1 ? options[num] : null, target, forceChosen);
@@ -406,10 +406,10 @@ public class FlowerMenu extends Widget {
     
     public static class Choice {
 	public final String opt;
-	public final Bot.Target target;
+	public final ITarget target;
 	public final boolean forced;
 	
-	public Choice(String opt, Bot.Target target, boolean forced) {
+	public Choice(String opt, ITarget target, boolean forced) {
 	    this.opt = opt;
 	    this.target = target;
 	    this.forced = forced;

@@ -6,18 +6,13 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 public class HidingGobSprite<T extends RenderTree.Node> extends Sprite {
-    private boolean visible;
+    private boolean visible = true;
     final Collection<RenderTree.Slot> slots = new ArrayList<>(1);
-    public final T fx;
+    public final Collection<T> fxs;
     
-    protected HidingGobSprite(Gob gob, T fx) {
-	this(gob, fx, true);
-    }
-    
-    protected HidingGobSprite(Gob gob, T fx, boolean visible) {
+    protected HidingGobSprite(Gob gob, Collection<T> fxs) {
 	super(gob, null);
-	this.fx = fx;
-	this.visible = visible;
+	this.fxs = fxs;
     }
     
     /**returns true if visibility actually changed*/
@@ -25,7 +20,9 @@ public class HidingGobSprite<T extends RenderTree.Node> extends Sprite {
 	if(show == visible) {return false;}
 	visible = show;
 	if(show) {
-	    Loading.waitfor(() -> RUtils.multiadd(slots, fx));
+	    for (T fx : fxs) {
+		Loading.waitfor(() -> RUtils.multiadd(slots, fx));
+	    }
 	} else {
 	    for (RenderTree.Slot slot : slots)
 		slot.clear();
@@ -35,7 +32,9 @@ public class HidingGobSprite<T extends RenderTree.Node> extends Sprite {
     
     public void added(RenderTree.Slot slot) {
 	if(visible)
-	    slot.add(fx);
+	    for (T fx : fxs) {
+		slot.add(fx);
+	    }
 	slots.add(slot);
     }
     

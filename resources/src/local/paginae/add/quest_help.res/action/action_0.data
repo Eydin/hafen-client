@@ -1,0 +1,17 @@
+#ABUTTON LAYER FOR RES paginae\add\quest_help.res
+#String pr
+paginae/act/add
+#uint16 pver
+2
+#String name
+Quest helper
+#String preq
+
+#uint16 hk
+113
+#uint16 ad length
+2
+#String ad[0]
+@
+#String ad[1]
+quest_help

@@ -1,6 +1,6 @@
 package me.ender;
 
-import auto.Bot;
+import auto.Actions;
 import haven.*;
 import rx.functions.Func2;
 
@@ -30,8 +30,10 @@ public class AnimalFarm {
 	    labels.sort(POSITIONAL_COMPARATOR);
 	    
 	    if(edit != null) {
-		labels.get(0).c.y -= UI.scale(10);
-		edit.c.y -= UI.scale(12);
+		Label label = labels.get(0);
+		//parents line is top most and has non-zero x coord if present. If it is absent then top one is brand info which has x as 0.
+		if(label.c.x > 0) {label.c.y = UI.scale(77);}
+		edit.c.y = 0;
 		edit.sz.x = BUTTONS_ON_LINE * BTN_W + (BUTTONS_ON_LINE - 1) * PAD;
 		Coord c = new Coord(edit.c.x, edit.c.y + edit.sz.y + PAD);
 		
@@ -46,15 +48,11 @@ public class AnimalFarm {
 		wnd.pack();
 	    }
 	    
+	    /*
 	    int i = 0;
 	    while (i < labels.size()) {
 		Label label = labels.get(i);
 		String labelText = label.gettext();
-//		System.out.println(String.format("%s %s", labelText, label.c));
-		if(labelText.matches("-- With \\w+")) {
-		    label.c.x = 0;
-		    label.c.y = (i + 1 < labels.size()) ? labels.get(i + 1).c.y - UI.scale(16) : label.c.y;
-		}
 		AnimalStatType statType = AnimalStatType.parse(labelText);
 		if(statType != null && i + 1 < labels.size()) {
 		    AnimalStat stat = statType.make(labels.get(i + 1).gettext());
@@ -63,6 +61,7 @@ public class AnimalFarm {
 		}
 		i++;
 	    }
+	     */
 	}
     }
     
@@ -71,6 +70,7 @@ public class AnimalFarm {
 	HORSE(new String[]{"Stallion", "Mare"}, Highlight, Shoo, Slaughter, Ride),
 	SHEEP(new String[]{"Ram", "Ewe"}, Highlight, Shoo, Slaughter, Shear),
 	PIG(new String[]{"Hog", "Sow"}, Highlight, Shoo, Slaughter),
+	REINDEER(new String[]{"Reindeer Buck", "Reindeer Doe"}, Highlight, Shoo, Slaughter),
 	GOAT(new String[]{"Billy", "Nanny"}, Highlight, Shoo, Slaughter);
 	
 	private final Set<String> names;
@@ -113,7 +113,7 @@ public class AnimalFarm {
 	}
     
 	private static Func2<GameUI, Long, Runnable> flower(final String option) {
-	    return (gui, id) -> () -> Bot.selectFlower(gui, id, option);
+	    return (gui, id) -> () -> Actions.selectFlower(gui, id, option);
 	}
     }
     

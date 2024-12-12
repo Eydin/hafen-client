@@ -26,577 +26,85 @@
 
 package haven;
 
-import java.awt.*;
+import java.awt.Color;
+import java.awt.Graphics;
 import java.awt.image.BufferedImage;
 import java.util.*;
 import java.util.function.*;
-import java.util.List;
 import java.util.stream.IntStream;
 
-
-import static haven.ExtInventory.*;
-import static haven.PUtils.*;
 import haven.resutil.FoodInfo;
 import haven.resutil.Curiosity;
+import me.ender.ui.DrinkMeter;
+
 import static haven.PUtils.*;
 
-/* XXX: There starts to seem to be reason to split the while character
- * sheet into some more modular structure, as it is growing quite
- * large. */
 public class CharWnd extends WindowX {
     public static final RichText.Foundry ifnd = new RichText.Foundry(Resource.remote(), java.awt.font.TextAttribute.FAMILY, "SansSerif", java.awt.font.TextAttribute.SIZE, UI.scale(9)).aa(true);
     public static final Text.Furnace catf = new BlurFurn(new TexFurn(new Text.Foundry(Text.fraktur, 25).aa(true), Window.ctex), UI.scale(3), UI.scale(2), new Color(96, 48, 0));
     public static final Text.Furnace failf = new BlurFurn(new TexFurn(new Text.Foundry(Text.fraktur, 25).aa(true), Resource.loadimg("gfx/hud/fontred")), UI.scale(3), UI.scale(2), new Color(96, 48, 0));
-    public static final Text.Foundry attrf = new Text.Foundry(Text.fraktur, 18).aa(true);
+    public static final Text.Foundry attrf = new Text.Foundry(Text.fraktur.deriveFont((float)Math.floor(UI.scale(18.0)))).aa(true);
+    public static final PUtils.Convolution iconfilter = new PUtils.Lanczos(3);
+    public static final int attrw = BAttrWnd.FoodMeter.frame.sz().x - wbox.bisz().x;
     public static final Color debuff = new Color(255, 128, 128);
     public static final Color buff = new Color(128, 255, 128);
     public static final Color tbuff = new Color(128, 128, 255);
     public static final Color every = new Color(255, 255, 255, 16), other = new Color(255, 255, 255, 32);
-    public final List<Attr> base;
-    public final List<SAttr> skill;
     public static final int width = UI.scale(255);
     public static final int height = UI.scale(260);
-    public static final int margin1 = UI.scale(5);
-    public static final int margin2 = 2 * margin1;
-    public static final int margin3 = 2 * margin2;
-    public final FoodMeter feps;
-    public final GlutMeter glut;
-    public final Constipations cons;
-    public final SkillGrid skg;
-    public final CredoGrid credos;
-    public final ExpGrid exps;
-    public final Widget woundbox;
-    public final WoundList wounds;
-    public final Widget questbox;
-    public final QuestList cqst, dqst;
-    public Wound.Info wound;
-    public Quest.Info quest;
+    private final Tabs tabs;
+    private final IButton[] tabbtns;
+    public BAttrWnd battr;
+    public SAttrWnd sattr;
+    public SkillWnd skill;
+    public FightWndEx fight;
+    public WoundWnd wound;
+    public QuestWnd quest;
+    public final Tabs.Tab battrtab, sattrtab, skilltab, fighttab, woundtab, questtab;
     public int exp, enc;
-    private final Tabs.Tab questtab;
-    private final Tabs.Tab sattr, fgt;
-    private final Coord studyc;
-    private int scost;
 
-    public static class FoodMeter extends Widget {
-	public static final Tex frame =  Resource.loadtex("gfx/hud/chr/foodm");
-	public static final Coord marg = new Coord(5, 5), trmg = new Coord(10, 10);
-	public double cap;
-	public List<El> els = new LinkedList<El>();
-	private List<El> enew = null, etr = null;
-	private Indir<Resource> trev = null;
-	private Tex trol;
-	private double trtm = 0;
+    public static class TabProxy extends AWidget {
+	public final Class<? extends Widget> tcl;
+	public final String id;
+	private Widget tab = null;
 
-	@Resource.LayerName("foodev")
-	public static class Event extends Resource.Layer {
-	    public final Color col;
-	    public final String nm;
-	    public final int sort;
+	public TabProxy(Class<? extends Widget> tcl, String id) {
+	    this.tcl = tcl;
+	    this.id = id;
+	}
 
-	    public Event(Resource res, Message buf) {
-		res.super();
-		int ver = buf.uint8();
-		if(ver == 1) {
-		    col = new Color(buf.uint8(), buf.uint8(), buf.uint8(), buf.uint8());
-		    nm = buf.string();
-		    sort = buf.int16();
+	protected void added() {
+	    super.added();
+	    if(tab == null) {
+		CharWnd chr = getparent(CharWnd.class);
+		tab = chr.getchild(tcl);
+		unlink();
+		if(tab != null) {
+		    tab.addchild(this, id);
 		} else {
-		    throw(new Resource.LoadException("unknown foodev version: " + ver, res));
-		}
-	    }
-
-	    public void init() {}
-	}
-
-	public static class El {
-	    public final Indir<Resource> res;
-	    public double a;
-
-	    public El(Indir<Resource> res, double a) {this.res = res; this.a = a;}
-
-	    private Event ev = null;
-	    public Event ev() {
-		if(ev == null)
-		    ev = res.get().layer(Event.class);
-		return(ev);
-	    }
-	}
-	public static final Comparator<El> dcmp = new Comparator<El>() {
-	    public int compare(El a, El b) {
-		int c;
-		if((c = (a.ev().sort - b.ev().sort)) != 0)
-		    return(c);
-		return(a.ev().nm.compareTo(b.ev().nm));
-	    }
-	};
-
-	public FoodMeter() {
-	    super(frame.sz());
-	}
-
-	private BufferedImage mktrol(List<El> els, Indir<Resource> trev) {
-	    BufferedImage buf = TexI.mkbuf(sz.add(trmg.mul(2)));
-	    Coord marg2 = marg.add(trmg);
-	    Graphics g = buf.getGraphics();
-	    double x = 0;
-	    int w = sz.x - (marg.x * 2);
-	    for(El el : els) {
-		int l = (int)Math.floor((x / cap) * w);
-		int r = (int)Math.floor(((x += el.a) / cap) * w);
-		if(el.res == trev) {
-		    g.setColor(Utils.blendcol(el.ev().col, Color.WHITE, 0.5));
-		    g.fillRect(marg2.x - (trmg.x / 2) + l, marg2.y - (trmg.y / 2), r - l + trmg.x, sz.y - (marg.y * 2) + trmg.y);
-		}
-	    }
-	    imgblur(buf.getRaster(), trmg.x, trmg.y);
-	    return(buf);
-	}
-
-	private void drawels(GOut g, List<El> els, int alpha) {
-	    double x = 0;
-	    int w = sz.x - (marg.x * 2);
-	    for(El el : els) {
-		int l = (int)Math.floor((x / cap) * w);
-		int r = (int)Math.floor(((x += el.a) / cap) * w);
-		try {
-		    Color col = el.ev().col;
-		    g.chcolor(new Color(col.getRed(), col.getGreen(), col.getBlue(), alpha));
-		    g.frect(new Coord(marg.x + l, marg.y), new Coord(r - l, sz.y - (marg.y * 2)));
-		} catch(Loading e) {
+		    tab = Utils.construct(tcl);
+		    tab.addchild(this, id);
+		    chr.addchild(tab, "tab");
 		}
 	    }
 	}
 
-	public void tick(double dt) {
-	    if(enew != null) {
-		try {
-		    Collections.sort(enew, dcmp);
-		    els = enew;
-		    rtip = null;
-		    enew = null;
-		} catch(Loading l) {}
-	    }
-	    if(trev != null) {
-		try {
-		    Collections.sort(etr, dcmp);
-		    GameUI gui = getparent(GameUI.class);
-		    if(gui != null)
-			gui.msg(String.format("You gained " + Loading.waitfor(trev).flayer(Event.class).nm), Color.WHITE);
-		    trol = new TexI(mktrol(etr, trev));
-		    trtm = Utils.rtime();
-		    trev = null;
-		} catch(Loading l) {}
-	    }
-	}
-
-	public void draw(GOut g) {
-	    double d = (trtm > 0)?(Utils.rtime() - trtm):Double.POSITIVE_INFINITY;
-	    g.chcolor(0, 0, 0, 255);
-	    g.frect(marg, sz.sub(marg.mul(2)));
-	    drawels(g, els, 255);
-	    if(d < 1.0)
-		drawels(g, etr, (int)(255 - (d * 255)));
-	    g.chcolor();
-	    g.image(frame, Coord.z);
-	    if(d < 2.5) {
-		GOut g2 = g.reclipl(trmg.inv(), sz.add(trmg.mul(2)));
-		g2.chcolor(255, 255, 255, (int)(255 - ((d * 255) * (1.0 / 2.5))));
-		g2.image(trol, Coord.z);
-	    } else {
-		trtm = 0;
-	    }
-	}
-
-	public void update(Object... args) {
-	    int n = 0;
-	    this.cap = (Float)args[n++];
-	    List<El> enew = new LinkedList<El>();
-	    while(n < args.length) {
-		Indir<Resource> res = ui.sess.getres((Integer)args[n++]);
-		double a = (Float)args[n++];
-		enew.add(new El(res, a));
-	    }
-	    this.enew = enew;
-	}
-
-	public void trig(Indir<Resource> ev) {
-	    etr = (enew != null)?enew:els;
-	    trev = ev;
-	}
-
-	private Tex rtip = null;
-	public Object tooltip(Coord c, Widget prev) {
-	    if(rtip == null) {
-		List<El> els = this.els;
-		BufferedImage cur = null;
-		double sum = 0.0;
-		for(El el : els) {
-		    Event ev = el.res.get().flayer(Event.class);
-		    Color col = Utils.blendcol(ev.col, Color.WHITE, 0.5);
-		    BufferedImage ln = Text.render(String.format("%s: %s", ev.nm, Utils.odformat2(el.a, 2)), col).img;
-		    Resource.Image icon = el.res.get().layer(Resource.imgc);
-		    if(icon != null)
-			ln = ItemInfo.catimgsh(5, convolve(icon.img, new Coord(ln.getHeight(), ln.getHeight()), iconfilter), ln);
-		    cur = ItemInfo.catimgs(0, cur, ln);
-		    sum += el.a;
-		}
-		cur = ItemInfo.catimgs(0, cur, Text.i10n_label(String.format("Total: %s/%s", Utils.odformat2(sum, 2), Utils.odformat(cap, 2))).img);
-		rtip = new TexI(cur);
-	    }
-	    return(rtip);
+	public void uimsg(String nm, Object... args) {
+	    tab.uimsg(nm, args);
 	}
     }
 
-    public static class GlutMeter extends Widget {
-	public static final Tex frame = Resource.loadtex("gfx/hud/chr/glutm");
-	public static final Coord marg = new Coord(5, 5);
-	public Color fg = Color.BLACK, bg = Color.BLACK;
-	public double glut, lglut, gmod;
-	public String lbl;
-
-	public GlutMeter() {
-	    super(frame.sz());
-	}
-
-	public void draw(GOut g) {
-	    Coord isz = sz.sub(marg.mul(2));
-	    g.chcolor(bg);
-	    g.frect(marg, isz);
-	    g.chcolor(fg);
-	    g.frect(marg, new Coord((int)Math.round(isz.x * (glut - Math.floor(glut))), isz.y));
-	    g.chcolor();
-	    g.image(frame, Coord.z);
-	}
-
-	public void update(Object... args) {
-	    int a = 0;
-	    this.glut = ((Number)args[a++]).doubleValue();
-	    this.lglut = ((Number)args[a++]).doubleValue();
-	    this.gmod = ((Number)args[a++]).doubleValue();
-	    this.lbl = (String)args[a++];
-	    this.bg = (Color)args[a++];
-	    this.fg = (Color)args[a++];
-	    rtip = null;
-	}
-
-	private Tex rtip = null;
-	public Object tooltip(Coord c, Widget prev) {
-	    if(rtip == null) {
-		rtip = RichText.render(String.format("%s: %.1f\u2030\n%s: %d%%", lbl, lglut * 1000, L10N.label("Food efficacy"), Math.round(gmod * 100)), -1).tex();
-	    }
-	    return(rtip);
-	}
-    }
-
-    public static class Constipations extends Listbox<Constipations.El> {
-	public static final Color hilit = new Color(255, 255, 0, 48);
-	public static final Text.Foundry elf = attrf;
-	public static final int elh = elf.height() + UI.scale(2);
-	public static final int ellw = elf.strsize("...").x;
-	public static final int etmaxw = elf.strsize("100%").x;
-	public static final Convolution tflt = new Hanning(1);
-	public static final Color buffed = new Color(160, 255, 160), full = new Color(250, 230, 64), none = new Color(250, 19, 43);
-	public final List<El> els = new ArrayList<El>();
-	private Integer[] order = {};
-
-	public static Color color(double a) {
-	    return (a > 1.0)?buffed:Utils.blendcol(none, full, a);
-	}
-	
-	public class El {
-	    public final ResData t;
-	    public double a;
-	    private Tex tt, at;
-	    private BufferedImage tip;
-	    private String name;
-	    private boolean hl;
-
-	    public El(ResData t, double a) {this.t = t; this.a = a;}
-	    public void update(double a) {this.a = a; at = null; tip = null;}
-
-	    public Tex tt() {
-		if(tt == null) {
-		    ItemSpec spec = new ItemSpec(OwnerContext.uictx.curry(ui), t, null);
-		    BufferedImage img = spec.image();
-		    String nm = spec.name();
-		    int maxw = sz.x - etmaxw - sb.sz.x - UI.scale(5) - elh;
-		    Text.Line rnm = elf.render(nm);
-		    if(rnm.sz().x > maxw) {
-			int len = rnm.charat(maxw - ellw);
-			rnm = elf.render(nm.substring(0, len) + "...");
-		    }
-		    BufferedImage buf = TexI.mkbuf(new Coord(elh + 5 + rnm.sz().x, elh));
-		    Graphics g = buf.getGraphics();
-		    g.drawImage(convolvedown(img, new Coord(elh, elh), tflt), 0, 0, null);
-		    g.drawImage(rnm.img, elh + 5, ((elh - rnm.sz().y) / 2) + 1, null);
-		    g.dispose();
-		    tt = new TexI(buf);
-		    name = nm;
-		}
-		return(tt);
-	    }
-	    
-	    String tip() {return name != null ? String.format("%s %d%%", name, ((int) (100 * (1 - a)))) : null;}
-
-	    public Tex at() {
-		if(at == null) {
-		    Color c= color(a);
-		    at = elf.render(String.format("%d%%", Math.max((int)Math.round((1.0 - a) * 100), 1)), c).tex();
-		}
-		return(at);
+    public <T> T getchild(Class<T> cl) {
+	T ret = super.getchild(cl);
+	if(ret != null)
+	    return(ret);
+	if(ret == null) {
+	    for(Widget ch : children()) {
+		if((ch instanceof Tabs.Tab) && ((ret = ch.getchild(cl)) != null))
+		    return(ret);
 	    }
 	}
-
-	private ItemInfo.InfoTip lasttip = null;
-	public void draw(GOut g) {
-	    ItemInfo.InfoTip tip = null;
-	    if(ui.lasttip instanceof ItemInfo.InfoTip)
-		tip = (ItemInfo.InfoTip)ui.lasttip;
-	    if(tip != lasttip) {
-		for(El el : els)
-		    el.hl = false;
-		FoodInfo finf;
-		try {
-		    finf = (tip == null)?null:ItemInfo.find(FoodInfo.class, tip.info());
-		} catch(Loading l) {
-		    finf = null;
-		}
-		if(finf != null) {
-		    for(int i = 0; i < els.size(); i++) {
-			El el = els.get(i);
-			for(int o = 0; o < finf.types.length; o++) {
-			    if(finf.types[o] == i) {
-				el.hl = true;
-				break;
-			    }
-			}
-		    }
-		}
-		lasttip = tip;
-	    }
-	    super.draw(g);
-	}
-
-	public static final Comparator<El> ecmp = new Comparator<El>() {
-	    public int compare(El a, El b) {
-		if(a.a < b.a)
-		    return(-1);
-		else if(a.a > b.a)
-		    return(1);
-		return(0);
-	    }
-	};
-
-	public Constipations(int w, int h) {
-	    super(w, h, elh);
-	}
-
-	protected void drawbg(GOut g) {}
-	protected El listitem(int i) {return(els.get(order[i]));}
-	protected int listitems() {return(order.length);}
-
-	protected void drawitem(GOut g, El el, int idx) {
-	    g.chcolor(el.hl?hilit:(((idx % 2) == 0)?every:other));
-	    g.frect(Coord.z, g.sz());
-	    g.chcolor();
-	    try {
-		g.image(el.tt(), Coord.z);
-	    } catch(Loading e) {}
-	    Tex at = el.at();
-	    g.image(at, new Coord(sz.x - at.sz().x - sb.sz.x, (elh - at.sz().y) / 2));
-	}
-
-	private void order() {
-	    int n = els.size();
-	    order = new Integer[n];
-	    for(int i = 0; i < n; i++)
-		order[i] = i;
-	    Arrays.sort(order, new Comparator<Integer>() {
-		    public int compare(Integer a, Integer b) {
-			return(ecmp.compare(els.get(a), els.get(b)));
-		    }
-		});
-	}
-    
-	@Override
-	protected Object itemtip(El item) {
-	    return item.tip();
-	}
-    
-	public void update(ResData t, double a) {
-	    prev: {
-		for(Iterator<El> i = els.iterator(); i.hasNext();) {
-		    El el = i.next();
-		    if(!Utils.eq(el.t, t))
-			continue;
-		    if(a == 1.0)
-			i.remove();
-		    else
-			el.update(a);
-		    break prev;
-		}
-		els.add(new El(t, a));
-	    }
-	    order();
-	}
-
-	protected void itemclick(El item, int button) {
-	}
-    }
-
-    public static final int attrw = FoodMeter.frame.sz().x - wbox.bisz().x;
-    public class Attr extends Widget {
-	public final String nm;
-	public final Text rnm;
-	public final Glob.CAttr attr;
-	public final Tex img;
-	public final Color bg;
-	public final Resource res;
-	private double lvlt = 0.0;
-	private Text ct, bt;
-	private int cbv = -1, ccv = -1;
-
-	private Attr(Glob glob, String attr, Color bg) {
-	    super(new Coord(attrw, attrf.height() + UI.scale(2)));
-	    res = Resource.local().loadwait("gfx/hud/chr/" + attr);
-	    this.nm = attr;
-	    this.rnm = attrf.render(res.flayer(Resource.tooltip).t);
-	    this.img = new TexI(convolve(res.flayer(Resource.imgc).img, new Coord(this.sz.y, this.sz.y), iconfilter));
-	    this.attr = glob.getcattr(attr);
-	    this.bg = bg;
-	}
-
-	public void tick(double dt) {
-	    if((attr.base != cbv) || (attr.comp != ccv)) {
-		cbv = attr.base; ccv = attr.comp;
-		Color c = Color.WHITE;
-		bt = attrf.render(String.format("(%d)", cbv), c);
-		if(ccv > cbv) {
-		    c = buff;
-		    tooltip = Text.render(String.format("%d + %d", cbv, ccv - cbv));
-		} else if(ccv < cbv) {
-		    c = debuff;
-		    tooltip = Text.render(String.format("%d - %d", cbv, cbv - ccv));
-		} else {
-		    tooltip = null;
-		}
-		ct = attrf.render(Integer.toString(ccv), c);
-	    }
-	    if((lvlt > 0.0) && ((lvlt -= dt) < 0))
-		lvlt = 0.0;
-	}
-
-	public void draw(GOut g) {
-	    if(lvlt != 0.0)
-		g.chcolor(Utils.blendcol(bg, new Color(128, 255, 128, 128), lvlt));
-	    else
-		g.chcolor(bg);
-	    g.frect(Coord.z, sz);
-	    g.chcolor();
-	    Coord cn = new Coord(0, sz.y / 2);
-	    g.aimage(img, cn.add(5, 0), 0, 0.5);
-	    g.aimage(rnm.tex(), cn.add(img.sz().x + margin2, 1), 0, 0.5);
-	    if(ct != null)
-		g.aimage(ct.tex(), cn.add(sz.x - UI.scale(7), 1), 1, 0.5);
-	    if(bt != null)
-	        g.aimage(bt.tex(), cn.add(sz.x - UI.scale(7), 1), 2, 0.5);
-	}
-
-	public void lvlup() {
-	    lvlt = 1.0;
-	    if(ui != null){
-		ui.message(String.format("Your %s leveled up!", rnm.text), GameUI.MsgType.GOOD);
-	    }
-	}
-    }
-
-    public class SAttr extends Widget {
-	public final String nm;
-	public final Text rnm;
-	public final Glob.CAttr attr;
-	public final Tex img;
-	public final Color bg;
-	public final Resource res;
-	public int tbv, cost;
-	private Text ct;
-	private int cbv, ccv;
-
-	private SAttr(Glob glob, String attr, Color bg) {
-	    super(new Coord(attrw, attrf.height() + UI.scale(2)));
-	    res = Resource.local().loadwait("gfx/hud/chr/" + attr);
-	    this.nm = attr;
-	    this.img = new TexI(convolve(res.flayer(Resource.imgc).img, new Coord(this.sz.y, this.sz.y), iconfilter));
-	    this.rnm = attrf.render(res.flayer(Resource.tooltip).t);
-	    this.attr = glob.getcattr(attr);
-	    this.bg = bg;
-	    adda(new IButton("gfx/hud/buttons/add", "u", "d", "h") {
-		    public void click() {if(ui.modshift){adj(5);}else if(ui.modctrl){adj(10);}else{adj(1);}}
-		}, sz.x - margin1, sz.y / 2, 1, 0.5);
-	    adda(new IButton("gfx/hud/buttons/sub", "u", "d", "h") {
-		    public void click() {if(ui.modshift){adj(-5);}else if(ui.modctrl){adj(-10);}else{adj(-1);}}
-		}, sz.x - margin3, sz.y / 2, 1, 0.5);
-	}
-
-	public void tick(double dt) {
-	    if(attr.base != cbv) {
-		tbv = 0;
-		ccv = 0;
-		cbv = attr.base;
-	    }
-	    if(attr.comp != ccv) {
-		ccv = attr.comp;
-		Color c = Color.WHITE;
-		if(ccv > cbv) {
-		    c = buff;
-		    tooltip = Text.render(String.format("%d + %d", cbv, ccv - cbv));
-		} else if(ccv < cbv) {
-		    c = debuff;
-		    tooltip = Text.render(String.format("%d - %d", cbv, cbv - ccv));
-		} else {
-		    tooltip = null;
-		}
-		if(tbv > 0)
-		    c = tbuff;
-		ct = attrf.render(Integer.toString(ccv + tbv), c);
-		updcost();
-	    }
-	}
-
-	public void draw(GOut g) {
-	    g.chcolor(bg);
-	    g.frect(Coord.z, sz);
-	    g.chcolor();
-	    super.draw(g);
-	    Coord cn = new Coord(0, sz.y / 2);
-	    g.aimage(img, cn.add(5, 0), 0, 0.5);
-	    g.aimage(rnm.tex(), cn.add(img.sz().x + margin2, 1), 0, 0.5);
-	    g.aimage(ct.tex(), cn.add(sz.x - UI.scale(40), 1), 1, 0.5);
-	}
-
-	private void updcost() {
-	    int cv = attr.base, nv = cv + tbv;
-	    int cost = 100 * ((nv + (nv * nv)) - (cv + (cv * cv))) / 2;
-	    scost += cost - this.cost;
-	    this.cost = cost;
-	}
-
-	public void adj(int a) {
-	    if(tbv + a < 0) a = -tbv;
-	    tbv += a;
-	    ccv = 0;
-	    updcost();
-	}
-
-	public void reset() {
-	    tbv = 0;
-	    ccv = 0;
-	    updcost();
-	}
-
-	public boolean mousewheel(Coord c, int a) {
-	    adj(-a);
-	    return(true);
-	}
+	return(null);
     }
 
     public static class RLabel<V> extends Label {
@@ -608,18 +116,18 @@ public class CharWnd extends WindowX {
 	private V lv;
 
         private RLabel(Supplier<V> val, Function<V, String> fmt, Function<V, Color> col, V ival) {
-            super(fmt.apply(ival));
+            super(ival == null ? "" : fmt.apply(ival));
 	    this.val = val;
 	    this.fmt = fmt;
 	    this.col = col;
 	    this.lv = ival;
             this.oc = oc;
-	    if(col != null)
+	    if((col != null) && (ival != null))
 		setcolor(lc = col.apply(ival));
         }
 
         public RLabel(Supplier<V> val, Function<V, String> fmt, Function<V, Color> col) {
-	    this(val, fmt, col, val.get());
+	    this(val, fmt, col, null);
 	}
 
         public RLabel(Supplier<V> val, Function<V, String> fmt, Color col) {
@@ -627,22 +135,7 @@ public class CharWnd extends WindowX {
 	    setcolor(col);
 	}
 
-	protected void added() {
-	    if(oc == null) {
-		oc = new Coord(c.x + sz.x, c.y);
-	    }
-	    move(oc.add(-sz.x, 0));
-	}
-
-	public void settext(String text) {
-	    super.settext(text);
-	    move(oc.add(-sz.x, 0));
-	}
-    
-	@Override
-	protected boolean i10n() {return false;}
-
-	public void tick(double dt) {
+	private void update() {
 	    V v = val.get();
 	    if(!Utils.eq(v, lv)) {
 		settext(fmt.apply(v));
@@ -656,71 +149,23 @@ public class CharWnd extends WindowX {
 		}
 	    }
 	}
-    }
 
-    public RLabel<?> explabel() {
-	return(new RLabel<Integer>(() -> exp, Utils::thformat, new Color(192, 192, 255)));
-    }
-
-    public RLabel<?> enclabel() {
-	return(new RLabel<Integer>(() -> enc, Utils::thformat, new Color(255, 255, 192)));
-    }
-
-    public static class StudyInfo extends Widget {
-	public final Inventory study;
-	public int texp, tw, tenc, tlph;
-
-	private StudyInfo(Coord sz, final Widget study) {
-	    super(sz);
-	    this.study = inventory(study);
-	    Widget plbl, pval;
-	    plbl = add(new Label("Attention:"), UI.scale(2, 2));
-	    pval = adda(new RLabel<Pair<Integer, Integer>>(() -> new Pair<>(tw, (ui == null) ? 0 : ui.sess.glob.getcattr("int").comp),
-							   n -> String.format("%,d/%,d", n.a, n.b),
-							   new Color(255, 192, 255, 255)),
-			plbl.pos("br").adds(0, 2).x(sz.x - UI.scale(2)), 1.0, 0.0);
-	    plbl = add(new Label("Experience cost:"), pval.pos("bl").adds(0, 2).xs(2));
-	    pval = adda(new RLabel<Integer>(() -> tenc, Utils::thformat, new Color(255, 255, 192, 255)),
-			plbl.pos("br").adds(0, 2).x(sz.x - UI.scale(2)), 1.0, 0.0);
-	    plbl = add(new Label("Learning points:"), pval.pos("bl").adds(0, 2).xs(2));
-	    pval = adda(new RLabel<Integer>(() -> texp, Utils::thformat, new Color(192, 192, 255, 255)),
-		plbl.pos("br").adds(0, 2).x(sz.x - UI.scale(2)), 1.0, 0.0);
-	    plbl = add(new Label("LP/hour:"), pval.pos("bl").adds(0, 2).xs(2));
-	    pval = adda(new RLabel<Integer>(() -> tlph, Utils::thformat, new Color(192, 255, 255, 255)),
-		plbl.pos("br").adds(0, 2).x(sz.x - UI.scale(2)), 1.0, 0.0);
-	    this.study.locked = CFG.LOCK_STUDY.get();
-	    add(new OptWnd.CFGBox("Lock study", CFG.LOCK_STUDY){
-		@Override
-		public void set(boolean a) {
-		    super.set(a);
-		    StudyInfo.this.study.locked = a;
-		}
-	    }, pval.pos("bl").adds(0, 5).xs(2));
-	    pack();
+	protected void attached() {
+	    super.attached();
+	    if(oc == null)
+		oc = new Coord(c.x + sz.x, c.y);
+	    if(lv == null)
+		update();
 	}
- 
-	public Coord contentsz() { return super.contentsz().add(UI.scale(5, 2)); }
 
-	private void upd() {
-	    int texp = 0, tw = 0, tenc = 0, tlph = 0;
-	    for(GItem item : study.children(GItem.class)) {
-		try {
-		    Curiosity ci = ItemInfo.find(Curiosity.class, item.info());
-		    if(ci != null) {
-			texp += ci.exp;
-			tw += ci.mw;
-			tenc += ci.enc;
-			tlph += ci.lph;
-		    }
-		} catch(Loading l) {
-		}
-	    }
-	    this.texp = texp; this.tw = tw; this.tenc = tenc; this.tlph = Curiosity.lph(tlph);
+	public void settext(String text) {
+	    super.settext(text);
+	    if(oc != null)
+		move(oc.add(-sz.x, 0));
 	}
 
 	public void tick(double dt) {
-	    upd();
-	    super.tick(dt);
+	    update();
 	}
     }
 
@@ -746,1168 +191,147 @@ public class CharWnd extends WindowX {
 	}
     }
 
-    public static final PUtils.Convolution iconfilter = new PUtils.Lanczos(3);
-    public class Skill {
-	public final String nm;
-	public final Indir<Resource> res;
-	public final int cost;
-	public boolean has = false;
-	private String sortkey;
-	private Tex small;
-	private final Text.UText<?> rnm = new Text.UText<String>(attrf) {
-	    public String value() {
-		try {
-		    return(res.get().flayer(Resource.tooltip).t);
-		} catch(Loading l) {
-		    return("...");
-		}
-	    }
-	};
-
-	private Skill(String nm, Indir<Resource> res, int cost, boolean has) {
-	    this.nm = nm;
-	    this.res = res;
-	    this.cost = cost;
-	    this.has = has;
-	    this.sortkey = nm;
-	}
-
-	public String rendertext() {
-	    StringBuilder buf = new StringBuilder();
-	    Resource res = this.res.get();
-	    buf.append("$img[" + res.name + "]\n\n");
-	    buf.append("$b{$font[serif,16]{" + res.flayer(Resource.tooltip).t + "}}\n\n\n");
-	    if(cost > 0)
-		buf.append("Cost: " + cost + "\n\n");
-	    buf.append(res.flayer(Resource.pagina).text);
-	    return(buf.toString());
-	}
-
-	private Text tooltip = null;
-	public Text tooltip() {
-	    if(tooltip == null)
-		tooltip = Text.render(res.get().flayer(Resource.tooltip).t);
-	    return(tooltip);
-	}
-    }
-
-    public class Credo {
-	public final String nm;
-	public final Indir<Resource> res;
-	public boolean has = false;
-	private String sortkey;
-	private Tex small;
-
-	private Credo(String nm, Indir<Resource> res, boolean has) {
-	    this.nm = nm;
-	    this.res = res;
-	    this.has = has;
-	    this.sortkey = nm;
-	}
-
-	public String rendertext() {
-	    StringBuilder buf = new StringBuilder();
-	    Resource res = this.res.get();
-	    buf.append("$img[" + res.name + "]\n\n");
-	    buf.append("$b{$font[serif,16]{" + res.flayer(Resource.tooltip).t + "}}\n\n\n");
-	    buf.append(res.flayer(Resource.pagina).text);
-	    return(buf.toString());
-	}
-
-	private Text tooltip = null;
-	public Text tooltip() {
-	    if(tooltip == null)
-		tooltip = Text.render(res.get().flayer(Resource.tooltip).t);
-	    return(tooltip);
-	}
-    }
-
-    public class Experience {
-	public final Indir<Resource> res;
-	public final int mtime, score;
-	private String sortkey = "\uffff";
-	private Tex small;
-	private final Text.UText<?> rnm = new Text.UText<String>(attrf) {
-	    public String value() {
-		try {
-		    return(res.get().flayer(Resource.tooltip).t);
-		} catch(Loading l) {
-		    return("...");
-		}
-	    }
-	};
-
-	private Experience(Indir<Resource> res, int mtime, int score) {
-	    this.res = res;
-	    this.mtime = mtime;
-	    this.score = score;
-	}
-
-	public String rendertext() {
-	    StringBuilder buf = new StringBuilder();
-	    Resource res = this.res.get();
-	    buf.append("$img[" + res.name + "]\n\n");
-	    buf.append("$b{$font[serif,16]{" + res.flayer(Resource.tooltip).t + "}}\n\n\n");
-	    if(score > 0)
-		buf.append("Experience points: " + Utils.thformat(score) + "\n\n");
-	    buf.append(res.flayer(Resource.pagina).text);
-	    return(buf.toString());
-	}
-
-	private Text tooltip = null;
-	public Text tooltip() {
-	    if(tooltip == null)
-		tooltip = Text.render(res.get().flayer(Resource.tooltip).t);
-	    return(tooltip);
-	}
-    }
-
-    public static class Wound {
-	public final int id, parentid;
-	public Indir<Resource> res;
-	public Object qdata;
-	public int level;
-	private String sortkey = "\uffff";
-	private Tex small;
-	private int namew;
-	private final Text.UText<?> rnm = new Text.UText<String>(attrf) {
-	    public String value() {
-		try {
-		    return(res.get().flayer(Resource.tooltip).t);
-		} catch(Loading l) {
-		    return("...");
-		}
-	    }
-
-	    public Text render(String text) {
-		Text.Foundry fnd = (Text.Foundry)this.fnd;
-		Text.Line full = fnd.render(text);
-		if(full.sz().x <= namew)
-		    return(full);
-		int ew = fnd.strsize("...").x;
-		for(int i = full.text.length() - 1; i > 0; i--) {
-		    if((full.advance(i) + ew) < namew)
-			return(fnd.render(text.substring(0, i) + "..."));
-		}
-		return(full);
-	    }
-
-	    /*
-	    public Text render(String text) {
-		Text.Foundry fnd = (Text.Foundry)this.fnd;
-		Text.Line ret = fnd.render(text);
-		while(ret.sz().x > namew) {
-		    fnd = new Text.Foundry(fnd.font, fnd.font.getSize() - 1, fnd.defcol).aa(true);
-		    ret = fnd.render(text);
-		}
-		return(ret);
-	    }
-	    */
-	};
-	private final Text.UText<?> rqd = new Text.UText<Object>(attrf) {
-	    public Object value() {
-		return(qdata);
-	    }
-	};
-
-	private Wound(int id, Indir<Resource> res, Object qdata, int parentid) {
-	    this.id = id;
-	    this.res = res;
-	    this.qdata = qdata;
-	    this.parentid = parentid;
-	}
-
-	public static class Box extends LoadingTextBox implements Info {
-	    public final int id;
-	    public final Indir<Resource> res;
-
-	    public Box(int id, Indir<Resource> res) {
-		super(Coord.z, "", ifnd);
-		bg = null;
-		this.id = id;
-		this.res = res;
-		settext(new Indir<String>() {public String get() {return(rendertext());}});
-	    }
-
-	    protected void added() {
-		resize(parent.sz);
-	    }
-
-	    public String rendertext() {
-		StringBuilder buf = new StringBuilder();
-		Resource res = this.res.get();
-		buf.append("$img[" + res.name + "]\n\n");
-		buf.append("$b{$font[serif,16]{" + res.flayer(Resource.tooltip).t + "}}\n\n\n");
-		buf.append(res.flayer(Resource.pagina).text);
-		return(buf.toString());
-	    }
-
-	    public int woundid() {return(id);}
-	}
-
-	@RName("wound")
-	public static class $wound implements Factory {
-	    public Widget create(UI ui, Object[] args) {
-		int id = (Integer)args[0];
-		Indir<Resource> res = ui.sess.getres((Integer)args[1]);
-		return(new Box(id, res));
-	    }
-	}
-	public interface Info {
-	    public int woundid();
-	}
-    }
-
-    public static class Quest {
-	public static final int QST_PEND = 0, QST_DONE = 1, QST_FAIL = 2, QST_DISABLED = 3;
-	public static final Color[] stcol = {
-	    new Color(255, 255, 64), new Color(64, 255, 64), new Color(255, 64, 64),
-	};
-	public static final char[] stsym = {'\u2022', '\u2713', '\u2717'};
-	public final int id;
-	public Indir<Resource> res;
-	public String title;
-	public int done;
-	public int mtime;
-	private Tex small;
-	private final Text.UText<?> rnm = new Text.UText<String>(attrf) {
-	    public String value() {
-		try {
-		    return(title());
-		} catch(Loading l) {
-		    return("...");
-		}
-	    }
-	};
-
-	private Quest(int id, Indir<Resource> res, String title, int done, int mtime) {
-	    this.id = id;
-	    this.res = res;
-	    this.title = title;
-	    this.done = done;
-	    this.mtime = mtime;
-	}
-
-	public String title() {
-	    if(title != null)
-		return(title);
-	    return(res.get().flayer(Resource.tooltip).t);
-	}
-
-	public static class Condition {
-	    public final String desc;
-	    public int done;
-	    public String status;
-	    public Object[] wdata = null;
-
-	    public Condition(String desc, int done, String status) {
-		this.desc = desc;
-		this.done = done;
-		this.status = status;
-	    }
-	}
-
-	private static final Tex qcmp = catf.i10n_label("Quest completed").tex();
-	private static final Tex qfail = failf.render("Quest failed").tex();
-	public void done(GameUI parent) {
-	    parent.add(new Widget() {
-		    double a = 0.0;
-		    Tex img, title, msg;
-
-		    public void draw(GOut g) {
-			if(img != null) {
-			    if(a < 0.2)
-				g.chcolor(255, 255, 255, (int)(255 * Utils.smoothstep(a / 0.2)));
-			    else if(a > 0.8)
-				g.chcolor(255, 255, 255, (int)(255 * Utils.smoothstep(1.0 - ((a - 0.8) / 0.2))));
-			    /*
-			    g.image(img, new Coord(0, (Math.max(img.sz().y, title.sz().y) - img.sz().y) / 2));
-			    g.image(title, new Coord(img.sz().x + 25, (Math.max(img.sz().y, title.sz().y) - title.sz().y) / 2));
-			    g.image(msg, new Coord((sz.x - msg.sz().x) / 2, Math.max(img.sz().y, title.sz().y) + 25));
-			    */
-			    int y = 0;
-			    g.image(img, new Coord((sz.x - img.sz().x) / 2, y)); y += img.sz().y + 15;
-			    g.image(title, new Coord((sz.x - title.sz().x) / 2, y)); y += title.sz().y + 15;
-			    g.image(msg, new Coord((sz.x - msg.sz().x) / 2, y));
-			}
-		    }
-
-		    public void tick(double dt) {
-			if(img == null) {
-			    try {
-				title = (done == QST_DONE?catf:failf).render(title()).tex();
-				img = res.get().flayer(Resource.imgc).tex();
-				msg = (done == QST_DONE)?qcmp:qfail;
-				/*
-				resize(new Coord(Math.max(img.sz().x + 25 + title.sz().x, msg.sz().x),
-						 Math.max(img.sz().y, title.sz().y) + 25 + msg.sz().y));
-				*/
-				resize(new Coord(Math.max(Math.max(img.sz().x, title.sz().x), msg.sz().x),
-						 img.sz().y + 15 + title.sz().y + 15 + msg.sz().y));
-				presize();
-			    } catch(Loading l) {
-				return;
-			    }
-			}
-			if((a += (dt * 0.2)) > 1.0)
-			    destroy();
-		    }
-
-		    public void presize() {
-			c = parent.sz.sub(sz).div(2);
-		    }
-
-		    protected void added() {
-			presize();
-		    }
-		});
-	}
-
-	public abstract static class CondWidget extends Widget {
-	    public final Condition cond;
-
-	    public CondWidget(Condition cond) {
-		this.cond = cond;
-	    }
-
-	    public boolean update() {
-		return(false);
-	    }
-	}
-
-	public static class DefaultCond extends CondWidget {
-	    public Text text;
-
-	    public DefaultCond(Condition cond) {super(cond);}
-	    @Deprecated
-	    public DefaultCond(Widget parent, Condition cond) {super(cond);}
-
-	    protected void added() {
-		super.added();
-		StringBuilder buf = new StringBuilder();
-		buf.append(String.format("%s{%c %s", RichText.Parser.col2a(stcol[cond.done]), stsym[cond.done], cond.desc));
-		if(cond.status != null) {
-		    buf.append(' ');
-		    buf.append(cond.status);
-		}
-		buf.append("}");
-		text = ifnd.render(buf.toString(), parent.sz.x - 20);
-		resize(text.sz().add(15, 1));
-	    }
-
-	    public void draw(GOut g) {
-		g.image(text.tex(), new Coord(15, 0));
-	    }
-	}
-
-	public static class Box extends Widget implements Info, QView.QVInfo {
-	    public final int id;
-	    public final Indir<Resource> res;
-	    public final String title;
-	    public Condition[] cond = {};
-	    private QView cqv;
-
-	    public Box(int id, Indir<Resource> res, String title) {
-		super(Coord.z);
-		this.id = id;
-		this.res = res;
-		this.title = title;
-	    }
-
-	    protected void added() {
-		resize(parent.sz);
-	    }
-
-	    public String title() {
-		if(title != null)
-		    return(title);
-		return(res.get().flayer(Resource.tooltip).t);
-	    }
-
-	    public Condition[] conds() {
-		return(cond);
-	    }
-
-	    private CharWnd cw = null;
-	    public int done() {
-		if(cw == null)
-		    cw = getparent(CharWnd.class);
-		if(cw == null)
-		    return(Quest.QST_PEND);
-		Quest qst;
-		if((qst = cw.cqst.get(id)) != null)
-		    return(qst.done);
-		if((qst = cw.dqst.get(id)) != null)
-		    return(qst.done);
-		return(Quest.QST_PEND);
-	    }
-
-	    public void refresh() {
-	    }
-
-	    public String rendertext() {
-		StringBuilder buf = new StringBuilder();
-		Resource res = this.res.get();
-		buf.append("$img[" + res.name + "]\n\n");
-		buf.append("$b{$font[serif,16]{" + title() + "}}\n\n");
-		Resource.Pagina pag = res.layer(Resource.pagina);
-		if((pag != null) && !pag.text.equals("")) {
-		    buf.append("\n");
-		    buf.append(pag.text);
-		    buf.append("\n");
-		}
-		return(buf.toString());
-	    }
-
-	    public Condition findcond(String desc) {
-		for(Condition cond : this.cond) {
-		    if(cond.desc.equals(desc))
-			return(cond);
-		}
-		return(null);
-	    }
-
-	    public void uimsg(String msg, Object... args) {
-		if(msg == "conds") {
-		    int a = 0;
-		    List<Condition> ncond = new ArrayList<Condition>(args.length);
-		    while(a < args.length) {
-			String desc = (String)args[a++];
-			int st = (Integer)args[a++];
-			String status = (String)args[a++];
-			Object[] wdata = null;
-			if((a < args.length) && (args[a] instanceof Object[]))
-			    wdata = (Object[])args[a++];
-			Condition cond = findcond(desc);
-			if(cond != null) {
-			    boolean ch = false;
-			    if(st != cond.done) {cond.done = st; ch = true;}
-			    if(!Utils.eq(status, cond.status)) {cond.status = status; ch = true;}
-			    if(!Arrays.equals(wdata, cond.wdata)) {cond.wdata = wdata; ch = true;}
-			    if(ch && (cqv != null))
-				cqv.update(cond);
-			} else {
-			    cond = new Condition(desc, st, status);
-			    cond.wdata = wdata;
-			}
-			ncond.add(cond);
-		    }
-		    this.cond = ncond.toArray(new Condition[0]);
-		    refresh();
-		    if(cqv != null)
-			cqv.update();
-		} else {
-		    super.uimsg(msg, args);
-		}
-	    }
-
-	    public void destroy() {
-		super.destroy();
-		if(cqv != null)
-		    cqv.reqdestroy();
-	    }
-
-	    public int questid() {return(id);}
-
-	    public Widget qview() {
-		return(cqv = new QView(this));
-	    }
-	}
-
-	public static class QView extends Widget {
-	    public static final Text.Furnace qtfnd = new BlurFurn(new Text.Foundry(Text.serif.deriveFont(java.awt.Font.BOLD), 16).aa(true), 2, 1, Color.BLACK);
-	    public static final Text.Foundry qcfnd = new Text.Foundry(Text.sans, 12).aa(true);
-	    public final QVInfo info;
-	    private Condition[] ccond;
-	    private Tex[] rcond = {};
-	    private Tex rtitle = null;
-	    private Tex glow, glowon;
-	    private double glowt = -1;
-
-	    public interface QVInfo {
-		public String title();
-		public Condition[] conds();
-		public int done();
-	    }
-
-	    public QView(QVInfo info) {
-		this.info = info;
-	    }
-
-	    private void resize() {
-		Coord sz = new Coord(0, 0);
-		if(rtitle != null) {
-		    sz.y += rtitle.sz().y + margin1;
-		    sz.x = Math.max(sz.x, rtitle.sz().x);
-		}
-		for(Tex c : rcond) {
-		    sz.y += c.sz().y;
-		    sz.x = Math.max(sz.x, c.sz().x);
-		}
-		sz.x += UI.scale(3);
-		resize(sz);
-	    }
-
-	    public void draw(GOut g) {
-		int y = 0;
-		if(rtitle != null) {
-		    if(rootxlate(ui.mc).isect(Coord.z, rtitle.sz()))
-			g.chcolor(192, 192, 255, 255);
-		    else if(info.done() == QST_DISABLED)
-			g.chcolor(255, 128, 0, 255);
-		    g.image(rtitle, new Coord(3, y));
-		    g.chcolor();
-		    y += rtitle.sz().y + 5;
-		}
-		for(Tex c : rcond) {
-		    g.image(c, new Coord(3, y));
-		    if(c == glowon) {
-			double a = (1.0 - Math.pow(Math.cos(glowt * 2 * Math.PI), 2));
-			g.chcolor(255, 255, 255, (int)(128 * a));
-			g.image(glow, new Coord(0, y - 3));
-			g.chcolor();
-		    }
-		    y += c.sz().y;
-		}
-	    }
-
-	    public boolean mousedown(Coord c, int btn) {
-		if((rtitle != null) && c.isect(Coord.z, rtitle.sz())) {
-		    CharWnd cw = getparent(GameUI.class).chrwdg;
-		    cw.show();
-		    cw.raise();
-		    cw.parent.setfocus(cw);
-		    cw.questtab.showtab();
-		    return(true);
-		}
-		return(super.mousedown(c, btn));
-	    }
-
-	    public void tick(double dt) {
-		if(rtitle == null) {
-		    try {
-			rtitle = qtfnd.render(info.title()).tex();
-			resize();
-		    } catch(Loading l) {
-		    }
-		}
-		if(glowt >= 0) {
-		    if((glowt += (dt * 0.5)) > 1.0) {
-			glowt = -1;
-			glow = glowon = null;
-		    }
-		}
-	    }
-
-	    private Text ct(Condition c) {
-		return(qcfnd.render(" " + stsym[c.done] + " " + c.desc + ((c.status != null)?(" " + c.status):""), stcol[c.done]));
-	    }
-
-	    void update() {
-		Condition[] cond = info.conds();
-		Tex[] rcond = new Tex[cond.length];
-		for(int i = 0; i < cond.length; i++) {
-		    Condition c = cond[i];
-		    BufferedImage text = ct(c).img;
-		    rcond[i] = new TexI(rasterimg(blurmask2(text.getRaster(), 1, 1, Color.BLACK)));
-		}
-		if(glowon != null) {
-		    for(int i = 0; i < this.rcond.length; i++) {
-			if(this.rcond[i] == glowon) {
-			    for(int o = 0; o < cond.length; o++) {
-				if(cond[o] == this.ccond[i]) {
-				    glowon = rcond[o];
-				    break;
-				}
-			    }
-			    break;
-			}
-		    }
-		}
-		this.ccond = cond;
-		this.rcond = rcond;
-		resize();
-	    }
-
-	    void update(Condition c) {
-		glow = new TexI(rasterimg(blurmask2(ct(c).img.getRaster(), 3, 2, stcol[c.done])));
-		for(int i = 0; i < ccond.length; i++) {
-		    if(ccond[i] == c) {
-			glowon = rcond[i];
-			break;
-		    }
-		}
-		glowt = 0.0;
-	    }
-	}
-
-	public static class DefaultBox extends Box {
-	    private Widget current;
-	    private boolean refresh = true;
-	    public List<Pair<String, String>> options = Collections.emptyList();
-	    public CondWidget[] condw = {};
-
-	    public DefaultBox(int id, Indir<Resource> res, String title) {
-		super(id, res, title);
-	    }
-
-	    protected void layouth(Widget cont) {
-		RichText text = ifnd.render(rendertext(), cont.sz.x - margin3);
-		cont.add(new Img(text.tex()), UI.scale(new Coord(10, 10)));
-	    }
-
-	    protected void layoutc(Widget cont) {
-		int y = cont.contentsz().y + margin2;
-		CondWidget[] nw = new CondWidget[cond.length];
-		CondWidget[] pw = condw;
-		cond: for(int i = 0; i < cond.length; i++) {
-		    for(int o = 0; o < pw.length; o++) {
-			if((pw[o] != null) && (pw[o].cond == cond[i])) {
-			    if(pw[o].update()) {
-				pw[o].unlink();
-				nw[i] = cont.add(pw[o], new Coord(0, y));
-				y += nw[i].sz.y;
-				pw[o] = null;
-				continue cond;
-			    }
-			}
-		    }
-		    if(cond[i].wdata != null) {
-			Indir<Resource> wres = ui.sess.getres((Integer)cond[i].wdata[0]);
-			nw[i] = (CondWidget)wres.get().getcode(Widget.Factory.class, true).create(ui, new Object[] {cond[i]});
-		    } else {
-			nw[i] = new DefaultCond(cont, cond[i]);
-		    }
-		    y += cont.add(nw[i], new Coord(0, y)).sz.y;
-		}
-		condw = nw;
-	    }
-
-	    protected void layouto(Widget cont) {
-		int y = cont.contentsz().y + margin2;
-		for(Pair<String, String> opt : options) {
-		    y += cont.add(new Button(cont.sz.x - margin3, opt.b, false) {
-			    public void click() {
-				DefaultBox.this.wdgmsg("opt", opt.a);
-			    }
-			}, new Coord(margin2, y)).sz.y + margin1;
-		}
-	    }
-
-	    protected void layout(Widget cont) {
-		layouth(cont);
-		layoutc(cont);
-		layouto(cont);
-	    }
-
-	    public void draw(GOut g) {
-		refresh: if(refresh) {
-		    Scrollport newch = new Scrollport(sz);
-		    try {
-			layout(newch.cont);
-		    } catch(Loading l) {
-			break refresh;
-		    }
-		    if(current != null)
-			current.destroy();
-		    current = add(newch, Coord.z);
-		    refresh = false;
-		}
-		super.draw(g);
-	    }
-
-	    public void refresh() {
-		refresh = true;
-	    }
-
-	    public void uimsg(String msg, Object... args) {
-		if(msg == "opts") {
-		    List<Pair<String, String>> opts = new ArrayList<>();
-		    for(int i = 0; i < args.length; i += 2)
-			opts.add(new Pair<>((String)args[i], (String)args[i + 1]));
-		    this.options = opts;
-		    refresh();
-		} else {
-		    super.uimsg(msg, args);
-		}
-	    }
-	}
-
-	@RName("quest")
-	public static class $quest implements Factory {
-	    public Widget create(UI ui, Object[] args) {
-		int id = (Integer)args[0];
-		Indir<Resource> res = ui.sess.getres((Integer)args[1]);
-		String title = (args.length > 2)?(String)args[2]:null;
-		return(new DefaultBox(id, res, title));
-	    }
-	}
-	public interface Info {
-	    public int questid();
-	    public Widget qview();
-	}
-    }
-
-    public class SkillGrid extends GridList<Skill> {
-	public final Group nsk, csk;
-	private boolean loading = false;
-
-	public SkillGrid(Coord sz) {
+    public static class ImageInfoBox extends Widget {
+	private Tex img;
+	private Indir<Tex> loading;
+	private final Scrollbar sb;
+
+	public ImageInfoBox(Coord sz) {
 	    super(sz);
-	    nsk = new Group(UI.scale(new Coord(40, 40)), new Coord(-1, 5), "Available Skills", Collections.emptyList());
-	    csk = new Group(UI.scale(new Coord(40, 40)), new Coord(-1, 5), "Known Skills", Collections.emptyList());
-	    itemtooltip = Skill::tooltip;
+	    sb = adda(new Scrollbar(sz.y, 0, 1), sz.x, 0, 1, 0);
 	}
 
-	protected void drawitem(GOut g, Skill sk) {
-	    if(sk.small == null)
-		sk.small = new TexI(convolvedown(sk.res.get().flayer(Resource.imgc).img, UI.scale(new Coord(40, 40)), iconfilter));
-	    g.image(sk.small, Coord.z);
+	public void drawbg(GOut g) {
+	    g.chcolor(0, 0, 0, 128);
+	    g.frect(Coord.z, sz);
+	    g.chcolor();
 	}
 
-	protected void update() {
-	    super.update();
-	    loading = true;
-	}
-
-	private void sksort(List<Skill> skills) {
-	    for(Skill sk : skills) {
-		try {
-		    sk.sortkey = sk.res.get().flayer(Resource.tooltip).t;
-		} catch(Loading l) {
-		    sk.sortkey = sk.nm;
-		    loading = true;
-		}
-	    }
-	    Collections.sort(skills, (a, b) -> a.sortkey.compareTo(b.sortkey));
-	}
+	public Coord marg() {return(UI.scale(10, 10));}
 
 	public void tick(double dt) {
+	    if(loading != null) {
+		try {
+		    set(loading.get());
+		    loading = null;
+		} catch(Loading l) {
+		}
+	    }
 	    super.tick(dt);
-	    if(loading) {
-		loading = false;
-		sksort(nsk.items);
-		sksort(csk.items);
+	}
+
+	public void draw(GOut g) {
+	    drawbg(g);
+	    if(img != null)
+		g.image(img, marg().sub(0, sb.val));
+	    super.draw(g);
+	}
+
+	public void set(Tex img) {
+	    this.img = img;
+	    if(img != null) {
+		sb.max = img.sz().y + (marg().y * 2) - sz.y;
+		sb.val = 0;
+	    } else {
+		sb.max = sb.val = 0;
 	    }
 	}
-    }
-
-    public class CredoGrid extends Scrollport {
-	public final Coord crsz = UI.scale(new Coord(70, 88));
-	public final int btnw = UI.scale(100);
-	public final Tex credoufr = new TexI(convolvedown(Resource.loadimg("gfx/hud/chr/yrkirframe"), crsz, iconfilter));
-	public final Tex credosfr = new TexI(convolvedown(Resource.loadimg("gfx/hud/chr/yrkirsframe"), crsz, iconfilter));
-	public final Text.Foundry prsf = new Text.Foundry(Text.fraktur, 15).aa(true);
-	public List<Credo> ncr = Collections.emptyList(), ccr = Collections.emptyList();
-	public Credo pcr = null;
-	public int pcl, pclt, pcql, pcqlt, pqid, cost;
-	public Credo sel = null;
-	private final Img pcrc, ncrc, ccrc;
-	private final Button pbtn, qbtn;
-	private boolean loading = false;
-
-	public CredoGrid(Coord sz) {
-	    super(sz);
-	    pcrc = new Img(GridList.dcatf.i10n_label("Pursuing").tex());
-	    ncrc = new Img(GridList.dcatf.i10n_label("Credos Available").tex());
-	    ccrc = new Img(GridList.dcatf.i10n_label("Credos Acquired").tex());
-	    pbtn = new Button(btnw, "Pursue", false) {
-		    public void click() {
-			if(sel != null)
-			    CharWnd.this.wdgmsg("crpursue", sel.nm);
-		    }
-		};
-	    qbtn = new Button(btnw, "Show quest", false) {
-		    public void click() {
-			CharWnd.this.wdgmsg("qsel", pqid);
-			questtab.showtab();
-		    }
-		};
+	public void set(Indir<Tex> loading) {
+	    this.loading = loading;
 	}
 
-	private Tex crtex(Credo cr) {
-	    if(cr.small == null)
-		cr.small = new TexI(convolvedown(cr.res.get().flayer(Resource.imgc).img, crsz, iconfilter));
-	    return(cr.small);
-	}
-
-	private class CredoImg extends Img {
-	    private final Credo cr;
-
-	    CredoImg(Credo cr) {
-		super(crtex(cr));
-		this.cr = cr;
-		this.tooltip = Text.render(cr.res.get().flayer(Resource.tooltip).t);
-	    }
-
-	    public void draw(GOut g) {
-		super.draw(g);
-		g.image((cr == sel) ? credosfr : credoufr, Coord.z);
-	    }
-
-	    public boolean mousedown(Coord c, int button) {
-		if(button == 1) {
-		    change(cr);
-		}
-		return(true);
-	    }
-	}
-
-	private int crgrid(int y, Collection<Credo> crs) {
-	    int col = 0;
-	    for(Credo cr : crs) {
-		if(col >= 3) {
-		    col = 0;
-		    y += crsz.y + margin1;
-		}
-		cont.add(new CredoImg(cr), col * (crsz.x + margin1) + margin1, y);
-		col++;
-	    }
-	    return(y + crsz.y + margin1);
-	}
-
-	private void sort(List<Credo> buf) {
-	    Collections.sort(buf, Comparator.comparing(cr -> cr.res.get().flayer(Resource.tooltip).t));
-	}
-
-	private void update() {
-	    sort(ccr); sort(ncr);
-	    for(Widget ch = cont.child; ch != null; ch = cont.child)
-		ch.destroy();
-	    int y = 0;
-	    if(pcr != null) {
-		cont.add(pcrc, margin1, y);
-		y += pcrc.sz.y + margin1;
-		Widget pcrim = cont.add(new CredoImg(pcr), margin1, y);
-		cont.add(new Label(String.format("Level: %d/%d", pcl, pclt), prsf), pcrim.c.x + pcrim.sz.x + margin1, y);
-		cont.add(new Label(String.format("Quest: %d/%d", pcql, pcqlt), prsf), pcrim.c.x + pcrim.sz.x + margin1, y + margin3);
-		cont.adda(qbtn, pcrim.c.x + pcrim.sz.x + margin1, y + pcrim.sz.y, 0, 1);
-		y += pcrim.sz.y;
-		y += margin2;
-	    }
-
-	    if(ncr.size() > 0) {
-		cont.add(ncrc, margin1, y);
-		y += ncrc.sz.y + 5;
-		y = crgrid(y, ncr);
-		if(pcr == null) {
-		    cont.add(pbtn, margin1, y);
-		    if(cost > 0)
-			cont.adda(new Label(String.format("Cost: %,d LP", cost)), pbtn.c.x + pbtn.sz.x + margin2, pbtn.c.y + (pbtn.sz.y / 2), 0, 0.5);
-		    y += pbtn.sz.y;
-		}
-		y += margin2;
-	    }
-
-	    if(ccr.size() > 0) {
-		cont.add(ccrc, margin1, y);
-		y += ccrc.sz.y + margin1;
-		y = crgrid(y, ccr);
-	    }
-	    cont.update();
-	}
-
-	public void tick(double dt) {
-	    if(loading) {
-		loading = false;
-		try {
-		    update();
-		} catch(Loading l) {
-		    loading = true;
-		}
-	    }
-	}
-
-	public void change(Credo cr) {
-	    sel = cr;
-	}
-
-	public void pcr(Credo cr, int crl, int crlt, int crql, int crqlt, int qid) {
-	    this.pcr = cr;
-	    this.pcl = crl;
-	    this.pclt = crlt;
-	    this.pcql = crql;
-	    this.pcqlt = crqlt;
-	    this.pqid = qid;
-	    loading = true;
-	}
-
-	public void ncr(List<Credo> cr) {
-	    this.ncr = cr;
-	    loading = true;
-	}
-
-	public void ccr(List<Credo> cr) {
-	    this.ccr = cr;
-	    loading = true;
-	}
-
-	public boolean mousedown(Coord c, int button) {
-	    if(super.mousedown(c, button))
-		return(true);
-	    change(null);
+	public boolean mousewheel(MouseWheelEvent ev) {
+	    sb.ch(ev.a * 20);
 	    return(true);
 	}
+
+	public void resize(Coord sz) {
+	    super.resize(sz);
+	    sb.c = new Coord(sz.x - sb.sz.x, 0);
+	    sb.resize(sz.y);
+	    set(img);
+	}
     }
 
-    public class ExpGrid extends GridList<Experience> {
-	public final Group seen;
-	private boolean loading = false;
+    public static interface IconInfo {
+	public void draw(BufferedImage img, Graphics g);
 
-	public ExpGrid(Coord sz) {
-	    super(sz);
-	    seen = new Group(UI.scale(new Coord(40, 40)), new Coord(-1, 5), null, Collections.emptyList());
-	    itemtooltip = Experience::tooltip;
-	}
-
-	protected void drawitem(GOut g, Experience exp) {
-	    if(exp.small == null)
-		exp.small = new TexI(convolvedown(exp.res.get().flayer(Resource.imgc).img, UI.scale(new Coord(40, 40)), iconfilter));
-	    g.image(exp.small, Coord.z);
-	}
-
-	protected void update() {
-	    super.update();
-	    loading = true;
-	}
-
-	public void tick(double dt) {
-	    super.tick(dt);
-	    if(loading) {
-		loading = false;
-		for(Experience exp : seen.items) {
-		    try {
-			exp.sortkey = exp.res.get().flayer(Resource.tooltip).t;
-		    } catch(Loading l) {
-			exp.sortkey = "\uffff";
-			loading = true;
+	public static BufferedImage render(BufferedImage base, List<ItemInfo> info) {
+	    BufferedImage ret = base;
+	    Graphics g = null;
+	    for(ItemInfo inf : info) {
+		if(inf instanceof IconInfo) {
+		    if(g == null) {
+			BufferedImage buf = TexI.mkbuf(PUtils.imgsz(ret));
+			g = buf.getGraphics();
+			g.drawImage(ret, 0, 0, null);
+			ret = buf;
 		    }
-		}
-		Collections.sort(seen.items, (a, b) -> a.sortkey.compareTo(b.sortkey));
-	    }
-	}
-    }
-
-    public class WoundList extends Listbox<Wound> implements DTarget {
-	public List<Wound> wounds = new ArrayList<Wound>();
-	private boolean loading = false;
-	private final Comparator<Wound> wcomp = new Comparator<Wound>() {
-	    public int compare(Wound a, Wound b) {
-		int c = a.sortkey.compareTo(b.sortkey);
-		if(c == 0 && a.qdata instanceof Integer && b.qdata instanceof Integer) {
-		    c = Integer.compare((Integer) b.qdata, (Integer) a.qdata);
-		}
-		return c;
-	    }
-	};
-
-	private WoundList(int w, int h) {
-	    super(w, h, attrf.height() + UI.scale(2));
-	}
-
-	private List<Wound> treesort(List<Wound> from, int pid, int level) {
-	    List<Wound> direct = new ArrayList<>(from.size());
-	    for(Wound w : from) {
-		if(w.parentid == pid) {
-		    w.level = level;
-		    direct.add(w);
+		    ((IconInfo)inf).draw(ret, g);
 		}
 	    }
-	    Collections.sort(direct, wcomp);
-	    List<Wound> ret = new ArrayList<>(from.size());
-	    for(Wound w : direct) {
-		ret.add(w);
-		ret.addAll(treesort(from, w.id, level + 1));
-	    }
+	    if(g != null)
+		g.dispose();
 	    return(ret);
 	}
-
-	public void tick(double dt) {
-	    if(loading) {
-		loading = false;
-		for(Wound w : wounds) {
-		    try {
-			w.sortkey = w.res.get().flayer(Resource.tooltip).t;
-		    } catch(Loading l) {
-			w.sortkey = "\uffff";
-			loading = true;
-		    }
-		}
-		wounds = treesort(wounds, -1, 0);
-	    }
-	}
-
-	protected Wound listitem(int idx) {return(wounds.get(idx));}
-	protected int listitems() {return(wounds.size());}
-
-	protected void drawbg(GOut g) {}
-
-	protected void drawitem(GOut g, Wound w, int idx) {
-	    if((wound != null) && (wound.woundid() == w.id))
-		drawsel(g);
-	    g.chcolor((idx % 2 == 0)?every:other);
-	    g.frect(Coord.z, g.sz());
-	    g.chcolor();
-	    int x = w.level * itemh;
-	    try {
-		if(w.small == null)
-		    w.small = new TexI(PUtils.convolvedown(w.res.get().flayer(Resource.imgc).img, new Coord(itemh, itemh), iconfilter));
-		g.image(w.small, new Coord(x, 0));
-		x += itemh + margin1;
-	    } catch(Loading e) {
-		g.image(WItem.missing.layer(Resource.imgc).tex(), new Coord(x, 0), new Coord(itemh, itemh));
-		x += itemh + margin1;
-	    }
-	    w.namew = sz.x - x;
-	    Text qd = w.rqd.get();
-	    if(qd != null) {
-		Tex tex = qd.tex();
-		g.aimage(tex, new Coord(sz.x - 15, itemh / 2), 1.0, 0.5);
-		w.namew -= tex.sz().x + 15 + 5;
-	    }
-	    g.aimage(w.rnm.get().tex(), new Coord(x, itemh / 2), 0, 0.5);
-	}
-
-	protected void itemclick(Wound item, int button) {
-	    if(button == 3) {
-		CharWnd.this.wdgmsg("wclick", item.id, button, ui.modflags());
-	    } else {
-		super.itemclick(item, button);
-	    }
-	}
-
-	public boolean drop(Coord cc, Coord ul) {
-	    return(false);
-	}
-
-	public boolean iteminteract(Coord cc, Coord ul) {
-	    Wound w = itemat(cc);
-	    if(w != null)
-		CharWnd.this.wdgmsg("wiact", w.id, ui.modflags());
-	    return(true);
-	}
-
-	public void change(Wound w) {
-	    if(w == null)
-		CharWnd.this.wdgmsg("wsel", (Object)null);
-	    else
-		CharWnd.this.wdgmsg("wsel", w.id);
-	}
-
-	public Wound get(int id) {
-	    for(Wound w : wounds) {
-		if(w.id == id)
-		    return(w);
-	    }
-	    return(null);
-	}
-
-	public void add(Wound w) {
-	    wounds.add(w);
-	}
-
-	public Wound remove(int id) {
-	    for(Iterator<Wound> i = wounds.iterator(); i.hasNext();) {
-		Wound w = i.next();
-		if(w.id == id) {
-		    i.remove();
-		    return(w);
-		}
-	    }
-	    return(null);
-	}
-    }
-    
-    public int getObjectiveIndex(String name) {
-	Set<Quest.Box> wdgs = children(Quest.Box.class);
-	if(!wdgs.isEmpty()) {
-	    for (Quest.Box wdg : wdgs) {
-		for (int i = 0; i < wdg.cond.length; i++) {
-		    if(wdg.cond[i].desc.contains(name)) {
-			return i;
-		    }
-		}
-	    }
-	}
-	return 0;
     }
 
-    public class QuestList extends Listbox<Quest> {
-	public List<Quest> quests = new ArrayList<Quest>();
-	private boolean loading = false;
-	private final Comparator<Quest> comp = new Comparator<Quest>() {
-	    public int compare(Quest a, Quest b) {
-		return(b.mtime - a.mtime);
+    public abstract static class AttrWdg extends Widget implements ItemInfo.Owner {
+	public final String nm;
+	public final Glob.CAttr attr;
+
+	public AttrWdg(Coord sz, Glob glob, String attr) {
+	    super(sz);
+	    this.nm = attr;
+	    this.attr = glob.getcattr(attr);
+	}
+
+	private static final OwnerContext.ClassResolver<AttrWdg> ctxr = new OwnerContext.ClassResolver<AttrWdg>()
+	    .add(AttrWdg.class, wdg -> wdg)
+	    .add(CharWnd.class, wdg -> wdg.getparent(CharWnd.class))
+	    .add(Glob.CAttr.class, wdg -> wdg.attr)
+	    .add(Glob.class, wdg -> wdg.attr.glob)
+	    .add(Session.class, wdg -> wdg.ui.sess);
+	public <T> T context(Class<T> cl) {return(ctxr.context(cl, this));}
+
+	private ItemInfo.Raw rinfo = null;
+	private List<ItemInfo> binfo = null;
+	public List<ItemInfo> info() {
+	    if(attr.info != this.rinfo) {
+		this.binfo = null;
+		this.rinfo = attr.info;
 	    }
-	};
-
-	private QuestList(int w, int h) {
-	    super(w, h, attrf.height() + 2);
-	}
-
-	public void tick(double dt) {
-	    if(loading) {
-		loading = false;
-		Collections.sort(quests, comp);
+	    if(this.binfo == null) {
+		List<ItemInfo> binfo = ItemInfo.buildinfo(this, this.rinfo);
+		Resource.Pagina pag = attr.res().get().layer(Resource.pagina);
+		if(pag != null)
+		    binfo.add(new ItemInfo.Pagina(this, pag.text));
+		if(!binfo.isEmpty())
+		    binfo.add(new ItemInfo.Name(this, attr.res().get().flayer(Resource.tooltip).t));
+		this.binfo = binfo;
 	    }
+	    return(this.binfo);
 	}
 
-	protected Quest listitem(int idx) {return(quests.get(idx));}
-	protected int listitems() {return(quests.size());}
-
-	protected void drawbg(GOut g) {}
-
-	protected void drawitem(GOut g, Quest q, int idx) {
-	    if((quest != null) && (quest.questid() == q.id))
-		drawsel(g);
-	    g.chcolor((idx % 2 == 0)?every:other);
-	    g.frect(Coord.z, g.sz());
-	    g.chcolor();
-	    try {
-		if(q.small == null)
-		    q.small = new TexI(PUtils.convolvedown(q.res.get().flayer(Resource.imgc).img, new Coord(itemh, itemh), iconfilter));
-		g.image(q.small, Coord.z);
-	    } catch(Loading e) {
-		g.image(WItem.missing.layer(Resource.imgc).tex(), Coord.z, new Coord(itemh, itemh));
+	private List<ItemInfo> tipinfo;
+	private Tex tipimg = null;
+	public Object tooltip(Coord c, Widget prev) {
+	    List<ItemInfo> info = info();
+	    if((tipimg != null) && (info != tipinfo)) {
+		tipimg.dispose();
+		tipimg = null;
 	    }
-	    if(q.done == Quest.QST_DISABLED)
-		g.chcolor(255, 128, 0, 255);
-	    g.aimage(q.rnm.get().tex(), new Coord(itemh + margin1, itemh / 2), 0, 0.5);
-	    g.chcolor();
-	}
-
-	public void change(Quest q) {
-	    if((q == null) || ((CharWnd.this.quest != null) && (q.id == CharWnd.this.quest.questid())))
-		CharWnd.this.wdgmsg("qsel", (Object)null);
-	    else
-		CharWnd.this.wdgmsg("qsel", q.id);
-	}
-
-	public Quest get(int id) {
-	    for(Quest q : quests) {
-		if(q.id == id)
-		    return(q);
-	    }
-	    return(null);
-	}
-
-	public void add(Quest q) {
-	    quests.add(q);
-	}
-
-	public Quest remove(int id) {
-	    for(Iterator<Quest> i = quests.iterator(); i.hasNext();) {
-		Quest q = i.next();
-		if(q.id == id) {
-		    i.remove();
-		    return(q);
+	    if(tipimg == null) {
+		try {
+		    if(info.isEmpty())
+			return(null);
+		    tipimg = new TexI(ItemInfo.longtip(info));
+		    tipinfo = info;
+		} catch(Loading l) {
+		    return("...");
 		}
 	    }
-	    return(null);
-	}
-
-	public void remove(Quest q) {
-	    quests.remove(q);
+	    return(tipimg);
 	}
     }
 
@@ -1926,224 +350,13 @@ public class CharWnd extends WindowX {
     public CharWnd(Glob glob) {
 	super(UI.scale(new Coord(300, 290)), "Character Sheet");
 
-	final Tabs tabs = new Tabs(new Coord(15, 10), Coord.z, this);
-        Tabs.Tab battr = tabs.add();
-        {
-	    Widget prev;
-	    prev = battr.add(settip(new Img(catf.i10n_label("Base Attributes").tex()), "gfx/hud/chr/tips/base"), Coord.z);
-	    base = new ArrayList<>();
-	    Attr aw;
-	    base.add(aw = battr.add(new Attr(glob, "str", every), prev.pos("bl").adds(5, 0).add(wbox.btloff())));
-	    base.add(aw = battr.add(new Attr(glob, "agi", other), aw.pos("bl")));
-	    base.add(aw = battr.add(new Attr(glob, "int", every), aw.pos("bl")));
-	    base.add(aw = battr.add(new Attr(glob, "con", other), aw.pos("bl")));
-	    base.add(aw = battr.add(new Attr(glob, "prc", every), aw.pos("bl")));
-	    base.add(aw = battr.add(new Attr(glob, "csm", other), aw.pos("bl")));
-	    base.add(aw = battr.add(new Attr(glob, "dex", every), aw.pos("bl")));
-	    base.add(aw = battr.add(new Attr(glob, "wil", other), aw.pos("bl")));
-	    base.add(aw = battr.add(new Attr(glob, "psy", every), aw.pos("bl")));
-	    prev = Frame.around(battr, base);
-	    prev = battr.add(settip(new Img(catf.i10n_label("Food Event Points").tex()), "gfx/hud/chr/tips/fep"), prev.pos("bl").x(0).adds(0, 10));
-	    feps = battr.add(new FoodMeter(), prev.pos("bl").adds(5, 2));
-
-	    prev = battr.add(settip(new Img(catf.i10n_label("Food Satiations").tex()), "gfx/hud/chr/tips/constip"), width, 0);
-	    cons = battr.add(new Constipations(attrw, base.size()), prev.pos("bl").adds(5, 0).add(wbox.btloff()));
-	    prev = Frame.around(battr, Collections.singletonList(cons));
-	    prev = battr.add(settip(new Img(catf.i10n_label("Hunger Level").tex()), "gfx/hud/chr/tips/hunger"), prev.pos("bl").x(width).adds(0, 10));
-	    glut = battr.add(new GlutMeter(), prev.pos("bl").adds(5, 2));
-        }
-
-        sattr = tabs.add();
-	{
-	    Widget prev;
-	    prev = sattr.add(settip(new Img(catf.i10n_label("Abilities").tex()), "gfx/hud/chr/tips/sattr"), Coord.z);
-	    skill = new ArrayList<>();
-	    SAttr aw;
-	    skill.add(aw = sattr.add(new SAttr(glob, "unarmed", every), prev.pos("bl").adds(5, 0).add(wbox.btloff())));
-	    skill.add(aw = sattr.add(new SAttr(glob, "melee", other), aw.pos("bl")));
-	    skill.add(aw = sattr.add(new SAttr(glob, "ranged", every), aw.pos("bl")));
-	    skill.add(aw = sattr.add(new SAttr(glob, "explore", other), aw.pos("bl")));
-	    skill.add(aw = sattr.add(new SAttr(glob, "stealth", every), aw.pos("bl")));
-	    skill.add(aw = sattr.add(new SAttr(glob, "sewing", other), aw.pos("bl")));
-	    skill.add(aw = sattr.add(new SAttr(glob, "smithing", every), aw.pos("bl")));
-	    skill.add(aw = sattr.add(new SAttr(glob, "masonry", other), aw.pos("bl")));
-	    skill.add(aw = sattr.add(new SAttr(glob, "carpentry", every), aw.pos("bl")));
-	    skill.add(aw = sattr.add(new SAttr(glob, "cooking", other), aw.pos("bl")));
-	    skill.add(aw = sattr.add(new SAttr(glob, "farming", every), aw.pos("bl")));
-	    skill.add(aw = sattr.add(new SAttr(glob, "survive", other), aw.pos("bl")));
-	    skill.add(aw = sattr.add(new SAttr(glob, "lore", every), aw.pos("bl")));
-	    Widget lframe = Frame.around(sattr, skill);
-
-	    prev = sattr.add(settip(new Img(catf.i10n_label("Study Report").tex()), "gfx/hud/chr/tips/study"), width, 0);
-	    studyc = prev.pos("bl").adds(5, 0);
-	    Widget bframe = sattr.adda(new Frame(new Coord(attrw, UI.scale(105)), true), prev.pos("bl").adds(5, 0).x, lframe.pos("br").y, 0.0, 1.0);
-	    int rx = bframe.pos("iur").subs(10, 0).x;
-	    prev = sattr.add(new Label("Experience points:"), bframe.pos("iul").adds(10, 5));
-	    sattr.adda(enclabel(), new Coord(rx, prev.pos("ul").y), 1.0, 0.0);
-	    prev = sattr.add(new Label("Learning points:"), prev.pos("bl").adds(0, 2));
-	    sattr.adda(explabel(), new Coord(rx, prev.pos("ul").y), 1.0, 0.0);
-	    prev = sattr.add(new Label("Learning cost:"), prev.pos("bl").adds(0, 2));
-	    sattr.adda(new RLabel<Integer>(() -> scost, Utils::thformat, n -> (n > exp) ? debuff : Color.WHITE), new Coord(rx, prev.pos("ul").y), 1.0, 0.0);
-	    prev = sattr.adda(new Button(UI.scale(75), "Buy").action(() -> {
-			ArrayList<Object> args = new ArrayList<>();
-			for (SAttr attr : skill) {
-			    if (attr.tbv > 0) {
-				args.add(attr.attr.nm);
-				args.add(attr.attr.base + attr.tbv);
-			    }
-			}
-			CharWnd.this.wdgmsg("sattr", args.toArray(new Object[0]));
-	    }), bframe.pos("ibr").subs(5, 5), 1.0, 1.0);
-	    sattr.adda(new Button(UI.scale(75), "Reset").action(() -> {
-			for (SAttr attr : skill)
-			    attr.reset();
-	    }), prev.pos("bl").subs(5, 0), 1.0, 1.0);
-	}
-
-	Tabs.Tab skills = tabs.add();
-        {
-	    Widget prev;
-
-	    prev = skills.add(settip(new Img(catf.i10n_label("Lore & Skills").tex()), "gfx/hud/chr/tips/skills"), Coord.z);
-	    LoadingTextBox info = skills.add(new LoadingTextBox(new Coord(attrw, height), "", ifnd), prev.pos("bl").adds(5, 0).add(wbox.btloff()));
-	    info.bg = new Color(0, 0, 0, 128);
-	    Frame.around(skills, Collections.singletonList(info));
-
-	    prev = skills.add(new Img(catf.i10n_label("Entries").tex()), width, 0);
-	    Tabs lists = new Tabs(prev.pos("bl").adds(5, 0), new Coord(attrw + wbox.bisz().x, 0), skills);
-	    int gh = UI.scale(241);
-	    Tabs.Tab sktab = lists.add();
-	    {
-		Frame f = sktab.add(new Frame(new Coord(lists.sz.x, UI.scale(192)), false), 0, 0);
-		int y = f.sz.y + margin1;
-		skg = f.addin(new SkillGrid(Coord.z) {
-                        public void change(Skill sk) {
-                            Skill p = sel;
-                            super.change(sk);
-                            CharWnd.this.exps.sel = null;
-                            CharWnd.this.credos.sel = null;
-                            if (sk != null)
-                                info.settext(sk::rendertext);
-                            else if (p != null)
-                                info.settext("");
-                        }
-                    });
-		Widget bf = sktab.adda(new Frame(new Coord(f.sz.x, UI.scale(44)), false), f.c.x, gh, 0.0, 1.0);
-		int rx = attrw + wbox.btloff().x - margin2;
-		Button bbtn = sktab.adda(new Button(UI.scale(50), "Buy").action(() -> {
-                            if (skg.sel != null)
-                                CharWnd.this.wdgmsg("buy", skg.sel.nm);
-		}), bf.pos("ibr").subs(10, 0).y(bf.pos("mid").y), 1.0, 0.5);
-		Label clbl = sktab.adda(new Label("Cost:"), bf.pos("iul").adds(10, 0).y(bf.pos("mid").y), 0, 0.5);
-		sktab.adda(new RLabel<Pair<Integer, Integer>>(() -> new Pair<>(((skg.sel == null) || skg.sel.has) ? null : skg.sel.cost, exp),
-							      n -> (n.a == null) ? "N/A" : String.format("%,d / %,d LP", n.a, n.b),
-							      n -> ((n.a != null) && (n.a > n.b)) ? debuff : Color.WHITE),
-			   bbtn.pos("ul").subs(10, 0).y(bf.pos("mid").y), 1.0, 0.5);
-	    }
-
-	    Tabs.Tab credos = lists.add();
-	    {
-		Frame f = credos.add(new Frame(new Coord(lists.sz.x, gh), false), 0, 0);
-		this.credos = f.addin(new CredoGrid(Coord.z) {
-                        public void change(Credo cr) {
-                            Credo p = sel;
-                            super.change(cr);
-                            CharWnd.this.skg.sel = null;
-                            CharWnd.this.exps.sel = null;
-                            if (cr != null)
-                                info.settext(cr::rendertext);
-                            else if (p != null)
-                                info.settext("");
-                        }
-                    });
-	    }
-
-	    Tabs.Tab exps = lists.add();
-	    {
-		Frame f = exps.add(new Frame(new Coord(lists.sz.x, gh), false), 0, 0);
-		this.exps = f.addin(new ExpGrid(Coord.z) {
-                        public void change(Experience exp) {
-                            Experience p = sel;
-                            super.change(exp);
-                            CharWnd.this.skg.sel = null;
-                            CharWnd.this.credos.sel = null;
-                            if (exp != null)
-                                info.settext(exp::rendertext);
-                            else if (p != null)
-                                info.settext("");
-                        }
-                    });
-	    }
-	    lists.pack();
-	    int bw = ((lists.sz.x + margin1) / 3) - margin1;
-	    skills.addhl(lists.c.add(0, lists.sz.y + margin1), lists.sz.x,
-			 lists.new TabButton(bw, "Skills", sktab),
-			 lists.new TabButton(bw, "Credos", credos),
-			 lists.new TabButton(bw, "Lore",   exps));
-        }
-
-	Tabs.Tab wounds;
-	{
-	    Widget prev;
-
-	    wounds = tabs.add();
-	    prev = wounds.add(settip(new Img(catf.i10n_label("Health & Wounds").tex()), "gfx/hud/chr/tips/wounds"), 0, 0);
-	    this.wounds = wounds.add(new WoundList(attrw, 12), prev.pos("bl").x(width + margin1).add(wbox.btloff()));
-	    Frame.around(wounds, Collections.singletonList(this.wounds));
-	    woundbox = wounds.add(new Widget(new Coord(attrw, this.wounds.sz.y)) {
-		    public void draw(GOut g) {
-			g.chcolor(0, 0, 0, 128);
-			g.frect(Coord.z, sz);
-			g.chcolor();
-			super.draw(g);
-		    }
-
-		    public void cdestroy(Widget w) {
-			if(w == wound)
-			    wound = null;
-		    }
-		}, prev.pos("bl").adds(5, 0).add(wbox.btloff()));
-	    Frame.around(wounds, Collections.singletonList(woundbox));
-	}
-
-	Tabs.Tab quests;
-	{
-	    Widget prev;
-
-	    quests = tabs.add();
-	    prev = quests.add(settip(new Img(catf.i10n_label("Quest Log").tex()), "gfx/hud/chr/tips/quests"), new Coord(0, 0));
-	    questbox = quests.add(new Widget(new Coord(attrw, height)) {
-		    public void draw(GOut g) {
-			g.chcolor(0, 0, 0, 128);
-			g.frect(Coord.z, sz);
-			g.chcolor();
-			super.draw(g);
-		    }
-
-		    public void cdestroy(Widget w) {
-			if(w == quest)
-			    quest = null;
-		    }
-		}, prev.pos("bl").adds(5, 0).add(wbox.btloff()));
-	    Frame.around(quests, Collections.singletonList(questbox));
-	    Tabs lists = new Tabs(prev.pos("bl").x(width + margin1), Coord.z, quests);
-	    Tabs.Tab cqst = lists.add();
-	    {
-		this.cqst = cqst.add(new QuestList(attrw, 11), wbox.btloff());
-		Frame.around(cqst, Collections.singletonList(this.cqst));
-	    }
-	    Tabs.Tab dqst = lists.add();
-	    {
-		this.dqst = dqst.add(new QuestList(attrw, 11), wbox.btloff());
-		Frame.around(dqst, Collections.singletonList(this.dqst));
-	    }
-	    lists.pack();
-	    int bw = ((lists.sz.x + margin1) / 2) - margin1;
-	    quests.addhl(lists.c.add(0, lists.sz.y + margin1), lists.sz.x,
-			 lists.new TabButton(bw, "Current",   cqst),
-			 lists.new TabButton(bw, "Completed", dqst));
-	    questtab = quests;
-	}
+	tabs = new Tabs(new Coord(15, 10), UI.scale(506, 315), this);
+        battrtab = tabs.add();
+        sattrtab = tabs.add();
+	skilltab = tabs.add();
+	fighttab = tabs.add();
+	woundtab = tabs.add();
+	questtab = tabs.add();
 
 	{
 	    Widget prev;
@@ -2169,73 +382,137 @@ public class CharWnd extends WindowX {
 		}
 	    }
 
-	    tabs.pack();
-
-	    fgt = tabs.add();
-
-	    this.addhl(new Coord(tabs.c.x, tabs.c.y + tabs.sz.y + margin2), tabs.sz.x,
-		new TB("battr", battr, "Base Attributes"),
-		new TB("sattr", sattr, "Abilities"),
-		new TB("skill", skills, "Lore & Skills"),
-		new TB("fgt", fgt, "Martial Arts & Combat Schools"),
-		new TB("wound", wounds, "Health & Wounds"),
-		new TB("quest", quests, "Quest Log")
+	    this.addhl(new Coord(tabs.c.x, tabs.c.y + tabs.sz.y + UI.scale(10)), tabs.sz.x,
+		tabbtns = new IButton[] {
+		    new TB("battr", battrtab, "Base Attributes"),
+		    new TB("sattr", sattrtab, "Abilities"),
+		    new TB("skill", skilltab, "Lore & Skills"),
+		    new TB("fgt", fighttab, "Martial Arts & Combat Schools"),
+		    new TB("wound", woundtab, "Health & Wounds"),
+		    new TB("quest", questtab, "Quest Log")
+		}
 	    );
 	}
 
 	resize(contentsz().add(UI.scale(15, 10)));
     }
 
+    public void addchild(Widget child, Object... args) {
+	String place = (args[0] instanceof String) ? (((String)args[0]).intern()) : null;
+	if((place == "tab") || /* XXX: Remove me! */ Utils.eq(args[0], Coord.of(47, 47))) {
+	    if(child instanceof BAttrWnd) {
+		battr = battrtab.add((BAttrWnd)child, Coord.z);
+		//TODO: find better place
+		if(CFG.HUNGER_METER.get()) {HungerMeter.add(ui);}
+		if(CFG.FEP_METER.get()) {FEPMeter.add(ui);}
+		if(CFG.DRINKS_METER.get()) {DrinkMeter.add(ui);}
+	    } else if(child instanceof SAttrWnd) {
+		sattr = sattrtab.add((SAttrWnd)child, Coord.z);
+	    } else if(child instanceof SkillWnd) {
+		skill = skilltab.add((SkillWnd)child, Coord.z);
+	    } else if(child instanceof FightWndEx) {
+		fight = fighttab.add((FightWndEx)child, Coord.z);
+	    } else if(child instanceof WoundWnd) {
+		wound = woundtab.add((WoundWnd)child, Coord.z);
+	    } else if(child instanceof QuestWnd) {
+		quest = questtab.add((QuestWnd)child, Coord.z);
+	    } else if(child instanceof TabProxy) {
+		add(child);
+	    } else {
+		throw(new RuntimeException("unknown tab widget: " + child));
+	    }
+	    updlayout();
+	} else if(place == "fmg") {
+	    fight = fighttab.add((FightWndEx)child, 0, 0);
+	} else {
+	    super.addchild(child, args);
+	}
+    }
+    
+    private void updlayout() {
+	tabs.pack();
+	resize(contentsz().add(UI.scale(15, 10)));
+	Widget.poshl(new Coord(tabs.c.x, tabs.c.y + tabs.sz.y + UI.scale(10)), tabs.sz.x, tabbtns);
+    }
+
+    public void uimsg(String nm, Object... args) {
+	if(nm == "attr") {
+	    int a = 0;
+	    while(a < args.length) {
+		String attr = (String)args[a++];
+		int base = Utils.iv(args[a++]);
+		int comp = Utils.iv(args[a++]);
+		ItemInfo.Raw info = ItemInfo.Raw.nil;
+		if((a < args.length) && (args[a] instanceof Object[]))
+		    info = new ItemInfo.Raw((Object[])args[a++]);
+		ui.sess.glob.cattr(attr, base, comp, info);
+	    }
+	} else if(nm == "exp") {
+	    exp = Utils.iv(args[0]);
+	} else if(nm == "enc") {
+	    enc = Utils.iv(args[0]);
+	} else {
+	    super.uimsg(nm, args);
+	}
+    }
+    
     public Glob.CAttr findattr(String name) {
-	for (SAttr skill : this.skill) {
+	if(this.sattr == null) {return null;}
+	for (SAttrWnd.SAttr skill : this.sattr.attrs) {
 	    if(name.equals(skill.attr.nm)) {
 		return skill.attr;
 	    }
 	}
-	for (Attr stat : base) {
+	for (BAttrWnd.Attr stat : this.battr.attrs) {
 	    if(name.equals(stat.attr.nm)) {
 		return stat.attr;
 	    }
 	}
 	return null;
     }
-
+    
     public Glob.CAttr findattr(Resource res) {
-	for (SAttr skill : this.skill) {
+	for (SAttrWnd.SAttr skill : this.sattr.attrs) {
 	    if(res == skill.res) {
 		return skill.attr;
 	    }
 	}
-	for (Attr stat : base) {
+	for (BAttrWnd.Attr stat : this.battr.attrs) {
 	    if(res == stat.res) {
 		return stat.attr;
 	    }
 	}
 	return null;
     }
-
-    public int statIndex(Resource res) {
-	if(base != null) {
-	    return IntStream.range(0, base.size())
-		.filter(i -> base.get(i).res == res)
-		.findFirst().orElse(Integer.MAX_VALUE);
-	}
-	return Integer.MAX_VALUE;
+    
+    private int statIndex(Resource res) {
+	return Optional.ofNullable(this.battr)
+	    .map(x -> x.attrs)
+	    .map(attrs -> IntStream.range(0, attrs.size())
+		.filter(i -> attrs.get(i).res == res)
+		.findFirst()
+		.orElse(Integer.MAX_VALUE)
+	    ).orElse(Integer.MAX_VALUE);
     }
-
-    public int skillIndex(Resource res) {
-	if(skill != null) {
-	    return IntStream.range(0, skill.size())
-		.filter(i -> skill.get(i).res == res)
-		.findFirst().orElse(Integer.MAX_VALUE);
-	}
-	return Integer.MAX_VALUE;
+    
+    private int skillIndex(Resource res) {
+	return Optional.ofNullable(this.sattr)
+	    .map(x -> x.attrs)
+	    .map(attrs -> {
+		    int i = 0;
+		    for (SAttrWnd.SAttr attr : attrs) {
+			if(attr.res == res) {return i;}
+			i++;
+		    }
+		    return Integer.MAX_VALUE;
+		}
+	    ).orElse(Integer.MAX_VALUE);
     }
-
+    
     public int BY_PRIORITY(Resource r1, Resource r2 ) {
 	int b1 = statIndex(r1);
 	int b2 = statIndex(r2);
-
+	
 	if(b1 == b2) {
 	    b1 = skillIndex(r1);
 	    b2 = skillIndex(r2);
@@ -2246,194 +523,6 @@ public class CharWnd extends WindowX {
 	    }
 	} else {
 	    return Integer.compare(b1, b2);
-	}
-    }
-
-    public void addchild(Widget child, Object... args) {
-	String place = (args[0] instanceof String)?(((String)args[0]).intern()):null;
-	if(place == "study") {
-	    if(child instanceof ExtInventory)
-		((ExtInventory) child).disable();
-	    sattr.add(child, studyc.add(wbox.btloff()));
-	    Widget f = Frame.around(sattr, Collections.singletonList(child));
-	    Widget inf = sattr.add(new StudyInfo(new Coord(attrw - child.sz.x - wbox.bisz().x - margin1, child.sz.y), child), child.pos("ur").add(wbox.bisz().x + margin1, 0));
-	    Frame.around(sattr, Collections.singletonList(inf));
-	    getparent(GameUI.class).studywnd.setStudy(inventory(child));
-	} else if(place == "fmg") {
-	    fgt.add(child, 0, 0);
-	} else if(place == "wound") {
-	    this.wound = (Wound.Info)child;
-	    woundbox.add(child, Coord.z);
-	} else if(place == "quest") {
-	    this.quest = (Quest.Info)child;
-	    questbox.add(child, Coord.z);
-	    getparent(GameUI.class).addchild(this.quest.qview(), "qq");
-	} else {
-	    super.addchild(child, args);
-	}
-    }
-
-    private List<Skill> decsklist(Object[] args, int a, boolean has) {
-	List<Skill> buf = new ArrayList<>();
-	while(a < args.length) {
-	    String nm = (String)args[a++];
-	    Indir<Resource> res = ui.sess.getres((Integer)args[a++]);
-	    int cost = ((Number)args[a++]).intValue();
-	    buf.add(new Skill(nm, res, cost, has));
-	}
-	return(buf);
-    }
-
-    private List<Credo> deccrlist(Object[] args, int a, boolean has) {
-	List<Credo> buf = new ArrayList<>();
-	while(a < args.length) {
-	    String nm = (String)args[a++];
-	    Indir<Resource> res = ui.sess.getres((Integer)args[a++]);
-	    buf.add(new Credo(nm, res, has));
-	}
-	return(buf);
-    }
-
-    private List<Experience> decexplist(Object[] args, int a) {
-	List<Experience> buf = new ArrayList<>();
-	while(a < args.length) {
-	    Indir<Resource> res = ui.sess.getres((Integer)args[a++]);
-	    int mtime = ((Number)args[a++]).intValue();
-	    int score = ((Number)args[a++]).intValue();
-	    buf.add(new Experience(res, mtime, score));
-	}
-	return(buf);
-    }
-
-    private void decwound(Object[] args, int a, int len) {
-	int id = (Integer)args[a];
-	Indir<Resource> res = (args[a + 1] == null)?null:ui.sess.getres((Integer)args[a + 1]);
-	if(res != null) {
-	    Object qdata = args[a + 2];
-	    int parentid = (len > 3) ? ((args[a + 3] == null) ? -1 : (Integer)args[a + 3]) : -1;
-	    Wound w = wounds.get(id);
-	    if(w == null) {
-		wounds.add(new Wound(id, res, qdata, parentid));
-	    } else {
-		w.res = res;
-		w.qdata = qdata;
-	    }
-	    wounds.loading = true;
-	} else {
-	    wounds.remove(id);
-	}
-    }
-
-    public void uimsg(String nm, Object... args) {
-	if(nm == "attr") {
-	    int a = 0;
-	    while(a < args.length) {
-		String attr = (String)args[a++];
-		int base = (Integer)args[a++];
-		int comp = (Integer)args[a++];
-		ui.sess.glob.cattr(attr, base, comp);
-	    }
-	} else if(nm == "exp") {
-	    exp = ((Number)args[0]).intValue();
-	}else if(nm == "enc") {
-	    enc = ((Number)args[0]).intValue();
-	} else if(nm == "food") {
-	    feps.update(args);
-	} else if(nm == "glut") {
-	    glut.update(args);
-	} else if(nm == "ftrig") {
-	    feps.trig(ui.sess.getres((Integer)args[0]));
-	} else if(nm == "lvl") {
-	    for(Attr aw : base) {
-		if(aw.nm.equals(args[0]))
-		    aw.lvlup();
-	    }
-	} else if(nm == "const") {
-	    int a = 0;
-	    while(a < args.length) {
-		ResData t = new ResData(ui.sess.getres((Integer)args[a++]), MessageBuf.nil);
-		if(args[a] instanceof byte[])
-		    t.sdt = new MessageBuf((byte[])args[a++]);
-		double m = ((Number)args[a++]).doubleValue();
-		ui.sess.character.constipation.update(t, m);
-		cons.update(t, m);
-	    }
-	} else if(nm == "csk") {
-	    skg.csk.update(decsklist(args, 0, true));
-	} else if(nm == "nsk") {
-	    skg.nsk.update(decsklist(args, 0, false));
-	} else if(nm == "ccr") {
-	    credos.ccr(deccrlist(args, 0, true));
-	} else if(nm == "ncr") {
-	    credos.ncr(deccrlist(args, 0, false));
-	} else if(nm == "crcost") {
-	    credos.cost = (Integer)args[0];
-	} else if(nm == "pcr") {
-	    if(args.length > 0) {
-		int a = 0;
-		String cnm = (String)args[a++];
-		Indir<Resource> res = ui.sess.getres((Integer)args[a++]);
-		int crl = (Integer)args[a++], crlt = (Integer)args[a++];
-		int crql = (Integer)args[a++], crqlt = (Integer)args[a++];
-		int qid = (Integer)args[a++];
-		credos.pcr(new Credo(cnm, res, false),
-			   crl, crlt, crql, crqlt, qid);
-	    } else {
-		credos.pcr(null, 0, 0, 0, 0, 0);
-	    }
-	} else if(nm == "exps") {
-	    exps.seen.update(decexplist(args, 0));
-	} else if(nm == "wounds") {
-	    if(args.length > 0) {
-		if(args[0] instanceof Object[]) {
-		    for(int i = 0; i < args.length; i++)
-			decwound((Object[])args[i], 0, ((Object[])args[i]).length);
-		} else {
-		    for(int i = 0; i < args.length; i += 3)
-			decwound(args, i, 3);
-		}
-	    }
-	} else if(nm == "quests") {
-	    for(int i = 0; i < args.length;) {
-		int id = (Integer)args[i++];
-		Integer resid = (Integer)args[i++];
-		Indir<Resource> res = (resid == null) ? null : ui.sess.getres(resid);
-		if(res != null) {
-		    int st = (Integer)args[i++];
-		    int mtime = (Integer)args[i++];
-		    String title = null;
-		    if((i < args.length) && (args[i] instanceof String))
-			title = (String)args[i++];
-		    QuestList cl = cqst;
-		    Quest q = cqst.get(id);
-		    if(q == null)
-			q = (cl = dqst).get(id);
-		    if(q == null) {
-			cl = null;
-			q = new Quest(id, res, title, st, mtime);
-		    } else {
-			int fst = q.done;
-			q.res = res;
-			q.done = st;
-			q.mtime = mtime;
-			if(((fst == Quest.QST_PEND) || (fst == Quest.QST_DISABLED)) &&
-			   !((st == Quest.QST_PEND) || (st == Quest.QST_DISABLED)))
-			    q.done(getparent(GameUI.class));
-		    }
-		    QuestList nl = ((q.done == Quest.QST_PEND) || (q.done == Quest.QST_DISABLED)) ? cqst : dqst;
-		    if(nl != cl) {
-			if(cl != null)
-			    cl.remove(q);
-			nl.add(q);
-		    }
-		    nl.loading = true;
-		} else {
-		    cqst.remove(id);
-		    dqst.remove(id);
-		}
-	    }
-	} else {
-	    super.uimsg(nm, args);
 	}
     }
 }

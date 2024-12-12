@@ -26,6 +26,8 @@
 
 package haven;
 
+import java.awt.*;
+
 public class HelpWnd extends WindowX {
     public static final RichText.Foundry fnd;
     public Indir<Resource> res;
@@ -41,15 +43,16 @@ public class HelpWnd extends WindowX {
     public HelpWnd(Indir<Resource> res) {
 	super(Coord.z, "Help!", true);
 	this.res = res;
-	this.text = add(new RichTextBox(UI.scale(300, 400), "", fnd), Coord.z);
-	add(new Button(UI.scale(100), "Dismiss") {
+	this.text = add(new RichTextBox(UI.scale(400, 500), "", fnd), Coord.z);
+	add(new Button(UI.scale(100), "Dismiss", false) {
 		public void click() {
 		    if(justclose)
 			HelpWnd.this.close();
 		    else
 		    HelpWnd.this.wdgmsg("close");
 		}
-	    }, UI.scale(100, 410));
+	    }, UI.scale(150, 500));
+	text.bg = new Color(16, 24, 16);
 	pack();
     }
     

@@ -33,16 +33,14 @@ import javax.sound.sampled.*;
 import dolda.xiphutil.*;
 
 public class Audio {
-    public static boolean enabled = true;
-    private static Player player;
     public static final AudioFormat fmt = new AudioFormat(44100, 16, 2, true, false);
-    public static int bufsize = CFG.AUDIO_BUFFER.get();
-    public static double volume = 1.0;
-    
-    static {
-	volume = Double.parseDouble(Utils.getpref("sfxvol", "1.0"));
-    }
-    
+    public static boolean enabled = true;
+    public static double volume = Double.parseDouble(Utils.getpref("sfxvol", "1.0"));
+    //FIXME: check if we can use loftar's buffer settings, or switch to custom
+    //public static int bufsize = CFG.AUDIO_BUFFER.get();
+    private static int bufsize = Utils.getprefi("audiobuf", Math.round(fmt.getSampleRate() * 0.05f)) * fmt.getFrameSize();
+    private static Player player;
+
     public static void setvolume(double volume) {
 	Audio.volume = volume;
 	Utils.setpref("sfxvol", Double.toString(volume));
@@ -592,6 +590,10 @@ public class Audio {
 	    SourceDataLine line = null;
 	    try {
 		while(true) {
+		    synchronized(this) {
+			reopen = false;
+			this.notifyAll();
+		    }
 		    try {
 			line = (SourceDataLine)AudioSystem.getLine(new DataLine.Info(SourceDataLine.class, fmt));
 			line.open(fmt, bufsize);
@@ -599,10 +601,6 @@ public class Audio {
 		    } catch(Exception e) {
 			e.printStackTrace();
 			return;
-		    }
-		    synchronized(this) {
-			reopen = false;
-			this.notifyAll();
 		    }
 		    byte[] buf = new byte[bufsize / 2];
 		    while(true) {
@@ -628,11 +626,11 @@ public class Audio {
 	    }
 	}
 
-	void reopen() {
+	void reopen(boolean async) {
 	    try {
 		synchronized(this) {
 		    reopen = true;
-		    while(reopen && isAlive())
+		    while(!async && reopen && isAlive())
 			this.wait();
 		}
 	    } catch(InterruptedException e) {
@@ -673,29 +671,65 @@ public class Audio {
 	    ((Mixer)pl.stream).stop(clip);
     }
 
-    private static Map<Resource, Clip> reslastc = new HashMap<Resource, Clip>();
-    public static CS fromres(Resource res) {
+    private static Map<Resource, Clip> resclips = new HashMap<>();
+    public static Clip resclip(Resource res) {
 	Collection<Clip> clips = res.layers(Audio.clip, null);
-	synchronized(reslastc) {
-	    Clip last = reslastc.get(res);
-	    int sz = clips.size();
-	    int s = (int)(Math.random() * (((sz > 2) && (last != null)) ? (sz - 1) : sz));
-	    Clip clip = null;
-	    for(Clip cp : clips) {
-		if(cp == last)
-		    continue;
-		clip = cp;
-		if(--s < 0)
-		    break;
+	int sz = clips.size();
+	if(sz == 0)
+	    throw(new Resource.NoSuchLayerException("no audio clips in " + res.name));
+	if(sz == 1)
+	    return(clips.iterator().next());
+	synchronized(resclips) {
+	    Clip ret = resclips.get(res);
+	    if(ret != null)
+		return(ret);
+	    List<Clip> clipl = new ArrayList<>(clips);
+	    if(clipl.size() == 2) {
+		ret = new Clip() {
+			public CS stream() {
+			    return(clipl.get((int)(Math.random() * 2)).stream());
+			}
+		    };
+	    } else {
+		ret = new Clip() {
+			int last = -1;
+
+			public CS stream() {
+			    int c;
+			    if(last < 0) {
+				c = (int)(Math.random() * clipl.size());
+			    } else {
+				c = (int)(Math.random() * (clipl.size() - 1));
+				if(c >= last)
+				    c++;
+			    }
+			    return(clipl.get(last = c).stream());
+			}
+		    };
 	    }
-	    if(sz > 2)
-		reslastc.put(res, clip);
-	    return(clip.stream());
+	    resclips.put(res, ret);
+	    return(ret);
 	}
+    }
+
+    public static CS fromres(Resource res) {
+	return(resclip(res).stream());
     }
 
     public static void play(Resource res) {
 	play(fromres(res));
+    }
+
+    public static int bufsize() {
+	return(bufsize / fmt.getFrameSize());
+    }
+
+    public static void bufsize(int nsz, boolean async) {
+	bufsize = nsz * fmt.getFrameSize();
+	Player pl = ckpl(false);
+	if(pl != null)
+	    pl.reopen(async);
+	Utils.setprefi("audiobuf", nsz);
     }
 
     public static void main(String[] args) throws Exception {
@@ -725,19 +759,13 @@ public class Audio {
 		    setvolume(Double.parseDouble(args[1]));
 		}
 	    });
-	Console.setscmd("audiobuf", (cons, args) -> {
-	    int nsz = Integer.parseInt(args[1]);
-	    audiobuf(nsz);
-	});
-    }
-    
-    public static void audiobuf(int nsz) throws Exception {
-	if(nsz > 44100)
-	    throw(new Exception("Rejecting buffer longer than 1 second"));
-	bufsize = nsz * 4;
-	Player pl = ckpl(false);
-	if(pl != null)
-	    pl.reopen();
-	CFG.AUDIO_BUFFER.set(bufsize);
+	Console.setscmd("audiobuf", new Console.Command() {
+		public void run(Console cons, String[] args) throws Exception {
+		    int nsz = Integer.parseInt(args[1]);
+		    if(nsz > fmt.getSampleRate())
+			throw(new Exception("Rejecting buffer longer than 1 second"));
+		    bufsize(nsz, false);
+		}
+	    });
     }
 }

@@ -29,6 +29,7 @@ package haven;
 public class Scrollbar extends Widget {
     public static final Tex schain = Resource.loadtex("gfx/hud/schain");
     public static final Tex sflarp = Resource.loadtex("gfx/hud/sflarp");
+    public static final int chcut = UI.scale(7);
     public static final int width = sflarp.sz().x;
     public Scrollable ctl;
     public int val, min, max;
@@ -73,42 +74,48 @@ public class Scrollbar extends Widget {
 	}
 	if(vis()) {
 	    int cx = (sflarp.sz().x / 2) - (schain.sz().x / 2);
-	    for(int y = 0; y < sz.y; y += schain.sz().y - 1)
-		g.image(schain, new Coord(cx, y));
+	    int eh = sz.y + chcut, ch = schain.sz().y;
+	    int n = Math.max((eh + ch - 1) / ch, 2);
+	    for(int i = 0; i < n; i++)
+		g.image(schain, Coord.of(cx, ((eh - ch) * i) / (n - 1)));
 	    double a = (double)val / (double)(max - min);
 	    int fy = (int)((sz.y - sflarp.sz().y) * a);
 	    g.image(sflarp, new Coord(0, fy));
 	}
     }
 
-    public boolean mousedown(Coord c, int button) {
-	if(button != 1)
-	    return(false);
-	if(!vis())
-	    return(false);
-	drag = ui.grabmouse(this);
-	mousemove(c);
-	return(true);
-    }
-
-    public void mousemove(Coord c) {
-	if(drag != null) {
-	    double a = (double)(c.y - (sflarp.sz().y / 2)) / (double)(sz.y - sflarp.sz().y);
-	    if(a < 0)
-		a = 0;
-	    if(a > 1)
-		a = 1;
-	    int val = (int)Math.round(a * (max - min)) + min;
-	    if(val != this.val) {
-		this.val = val;
-		changed();
-	    }
+    private void update(Coord c) {
+	double a = (double)(c.y - (sflarp.sz().y / 2)) / (double)(sz.y - sflarp.sz().y);
+	if(a < 0)
+	    a = 0;
+	if(a > 1)
+	    a = 1;
+	int val = (int)Math.round(a * (max - min)) + min;
+	if(val != this.val) {
+	    this.val = val;
+	    changed();
 	}
     }
 
-    public boolean mouseup(Coord c, int button) {
-	if(button != 1)
+    public boolean mousedown(MouseDownEvent ev) {
+	if(ev.b != 1)
+	    return(super.mousedown(ev));
+	if(!vis())
 	    return(false);
+	drag = ui.grabmouse(this);
+	update(ev.c);
+	return(true);
+    }
+
+    public void mousemove(MouseMoveEvent ev) {
+	super.mousemove(ev);
+	if(drag != null)
+	    update(ev.c);
+    }
+
+    public boolean mouseup(MouseUpEvent ev) {
+	if(ev.b != 1)
+	    return(super.mouseup(ev));
 	if(drag == null)
 	    return(false);
 	drag.remove();

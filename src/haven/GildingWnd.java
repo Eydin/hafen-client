@@ -1,6 +1,7 @@
 package haven;
 
-import me.ender.Reflect;
+import haven.res.ui.tt.slot.Slotted;
+import haven.res.ui.tt.slots.ISlots;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -40,14 +41,14 @@ public class GildingWnd extends WindowX {
 	    matches = result.b;
 	}
 
-	List<ItemInfo> gild_infos = gild.gilding.get();
-	List<ItemInfo> target_infos = target.slots.get();
-    
-	ItemInfo gild_info = gild_infos.get(0);
-	ItemInfo target_info = target_infos.get(0);
-    
-	min = Reflect.getFieldValueDouble(gild_info, "pmin") * Reflect.getFieldValueDouble(target_info, "pmin");
-	max = Reflect.getFieldValueDouble(gild_info, "pmax") * Reflect.getFieldValueDouble(target_info, "pmax");
+	List<Slotted> gild_infos = gild.gilding.get();
+	List<ISlots> target_infos = target.slots.get();
+
+	Slotted gild_info = gild_infos.get(0);
+	ISlots target_info = target_infos.get(0);
+
+	min = gild_info.pmin * target_info.pmin;
+	max = gild_info.pmax * target_info.pmax;
     
 	koeff = min + koeff * (max - min);
     
@@ -61,14 +62,15 @@ public class GildingWnd extends WindowX {
 	resize(new Coord(w + UI.scale(45), h + UI.scale(100) + (matches != null ? matches.getHeight() : 0)));
     
 	add(new FWItem(target.item), UI.scale(10, 5));
+	Coord asz = ca().sz();
 	add(new FWItem(gild.item), asz.x - UI.scale(5) - gild.sz.x, UI.scale(5));
     
 	boolean canSlot = true;
 	try {
 	    canSlot = target_infos.stream()
-		.map(itemInfo -> (List<?>) Reflect.getFieldValue(itemInfo, "s"))
+		.map(itemInfo -> itemInfo.s)
 		.flatMap(Collection::stream)
-		.map(o -> (String) Reflect.getFieldValue(o, "name"))
+		.map(o -> o.name)
 		.noneMatch(o -> {
 		    String name = gild.name.get();
 		    return Objects.equals(name, o);
@@ -95,12 +97,12 @@ public class GildingWnd extends WindowX {
 	    CharWnd charWnd = ui.gui.chrwdg;
 
 	    List<Resource> slot_attrs = target.slots.get().stream()
-		.map(itemInfo -> (Resource[]) Reflect.getFieldValue(itemInfo, "attrs"))
+		.map(itemInfo -> itemInfo.attrs)
 		.flatMap(Arrays::stream)
 		.collect(Collectors.toList());
 
 	    List<Resource> matches = gild.gilding.get().stream()
-		.map(itemInfo -> (Resource[]) Reflect.getFieldValue(itemInfo, "attrs"))
+		.map(itemInfo -> itemInfo.attrs)
 		.flatMap(Arrays::stream)
 		.filter(slot_attrs::contains)
 		.sorted(charWnd::BY_PRIORITY)
@@ -141,6 +143,7 @@ public class GildingWnd extends WindowX {
     @Override
     public void cdraw(GOut g) {
 	int itemH = Math.max(target.sz.y, gild.sz.y);
+	Coord asz = ca().sz();
 	g.image(islots, UI.scale(5, 10).addy(itemH));
 	g.image(igild, new Coord(asz.x - UI.scale(5) - igild.getWidth(), UI.scale(10) + itemH));
 	if(matches != null) {
@@ -148,6 +151,7 @@ public class GildingWnd extends WindowX {
 	    g.atext("Matching skills:", c1, 0.5, 0.5);
 	    g.image(matches, c1.sub(matches.getWidth() / 2, matches.getHeight() / 2).add(UI.scale(0, 18)));
 	}
+	
 	Coord ul = new Coord(0, asz.y - UI.scale(34));
 	Coord sz = new Coord(asz.x, UI.scale(14));
 	g.chcolor(new Color(122, 61, 61, 255));
@@ -164,9 +168,9 @@ public class GildingWnd extends WindowX {
     }
 
     @Override
-    public boolean mousedown(Coord c, int button) {
-	if(c.isect(Coord.z, sz)) {
-	    super.mousedown(c, button);
+    public boolean mousedown(MouseDownEvent ev) {
+	if(ev.c.isect(Coord.z, sz)) {
+	    super.mousedown(ev);
 	} else {
 	    close();
 	}
@@ -185,8 +189,8 @@ public class GildingWnd extends WindowX {
 
     public static boolean processGilding(UI ui, WItem target, WItem gild) {
 	boolean result = false;
-	List<ItemInfo> gilding = gild.gilding.get();
-	List<ItemInfo> slots = target.slots.get();
+	List<Slotted> gilding = gild.gilding.get();
+	List<ISlots> slots = target.slots.get();
 	if(gilding != null && !gilding.isEmpty() && slots != null && !slots.isEmpty()) {
 	    boolean isRing = target.name.get().contains("Ring");
 	    boolean isGem = gild.item.resname().contains("gems/gemstone");
@@ -211,12 +215,12 @@ public class GildingWnd extends WindowX {
 	}
 
 	@Override
-	public boolean iteminteract(WItem target, Coord cc, Coord ul) {
+	public boolean iteminteract(DTarget.Interact ev) {
 	    return false;
 	}
 
 	@Override
-	public boolean mousedown(Coord c, int btn) {
+	public boolean mousedown(MouseDownEvent ev) {
 	    return false;
 	}
     }

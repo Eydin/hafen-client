@@ -27,8 +27,15 @@
 package haven;
 
 import haven.QualityList.SingleType;
+import haven.render.*;
+import haven.res.gfx.invobjs.gems.gemstone.Gemstone;
+import haven.res.ui.tt.level.Level;
+import haven.res.ui.tt.slot.Slotted;
+import haven.res.ui.tt.slots.ISlots;
+import haven.res.ui.tt.wear.Wear;
 import haven.resutil.Curiosity;
-import me.ender.Reflect;
+import me.ender.ClientUtils;
+import me.ender.ItemHelpers;
 
 import java.awt.*;
 import java.util.*;
@@ -36,24 +43,28 @@ import java.awt.image.BufferedImage;
 import java.util.List;
 
 import haven.ItemInfo.AttrCache;
+import me.ender.WindowDetector;
 import rx.functions.Action0;
 import rx.functions.Action3;
 
 import static haven.Inventory.sqsz;
+import static me.ender.WindowDetector.*;
 
-public class WItem extends Widget implements DTarget2 {
+public class WItem extends Widget implements DTarget {
     public static final Resource missing = Resource.local().loadwait("gfx/invobjs/missing");
+    public static final Tex alchemy_mark = Resource.loadtex("gfx/hud/mark-alch");
     public static final Coord TEXT_PADD_TOP = new Coord(0, -3), TEXT_PADD_BOT = new Coord(0, 2);
     public static final Color DURABILITY_COLOR = new Color(214, 253, 255);
     public static final Color ARMOR_COLOR = new Color(255, 227, 191);
     public static final Color MATCH_COLOR = new Color(255, 32, 255, 255);
+    private static final ItemFilter WELL_MINED = new ItemFilter.Text("Well mined", true);
     public Coord lsz = new Coord(1, 1);
     public final GItem item;
     private Resource cspr = null;
     private Message csdt = Message.nil;
     private final List<Action3<WItem, Coord, Integer>> rClickListeners = new LinkedList<>();
     private boolean checkDrop = false;
-    private final CFG.Observer<Boolean> resetTooltip = cfg -> longtip = null;
+    private final CFG.Observer<Boolean> resetTooltip = cfg -> clearLongTip();
     private final Action0 itemMatched = this::itemMatched;
     
     public WItem(GItem item) {
@@ -112,50 +123,56 @@ public class WItem extends Widget implements DTarget2 {
 	} else {
 	    hoverstart = now;
 	}
-	try {
-	    List<ItemInfo> info = item.info();
-	    if(info.size() < 1)
-		return(null);
-	    if(info != ttinfo) {
-		shorttip = longtip = null;
-		ttinfo = info;
-	    }
-	    if(now - hoverstart < 1.0) {
-		if(shorttip == null)
-		    shorttip = new ShortTip(info);
-		return(shorttip);
-	    } else {
-		if(longtip == null)
-		    longtip = new LongTip(info);
-		return(longtip);
-	    }
-	} catch(Loading e) {
-	    return("...");
+	List<ItemInfo> info = item.info();
+	if(info.size() < 1)
+	    return(null);
+	if(info != ttinfo) {
+	    shorttip = longtip = null;
+	    ttinfo = info;
+	}
+	if(now - hoverstart < 1.0 && !CFG.UI_INSTANT_LONG_TIPS.get()) {
+	    if(shorttip == null)
+		shorttip = new ShortTip(info);
+	    return(shorttip);
+	} else {
+	    if(longtip == null)
+		longtip = new LongTip(info);
+	    return(longtip);
 	}
     }
 
     private List<ItemInfo> info() {return(item.info());}
-    public final AttrCache<Color> olcol = new AttrCache<>(this::info, info -> {
-	    ArrayList<GItem.ColorInfo> ols = new ArrayList<>();
+    public final AttrCache<Pipe.Op> rstate = new AttrCache<>(this::info, info -> {
+	    ArrayList<GItem.RStateInfo> ols = new ArrayList<>();
 	    for(ItemInfo inf : info) {
-		if(inf instanceof GItem.ColorInfo)
-		    ols.add((GItem.ColorInfo)inf);
+		if(inf instanceof GItem.RStateInfo)
+		    ols.add((GItem.RStateInfo)inf);
 	    }
 	    if(ols.size() == 0)
 		return(() -> null);
-	    if(ols.size() == 1)
-		return(ols.get(0)::olcol);
-	    ols.trimToSize();
-	    return(() -> {
-		    Color ret = null;
-		    for(GItem.ColorInfo ci : ols) {
-			Color c = ci.olcol();
-			if(c != null)
-			    ret = (ret == null) ? c : Utils.preblend(ret, c);
-		    }
-		    return(ret);
-		});
+	    if(ols.size() == 1) {
+		Pipe.Op op = ols.get(0).rstate();
+		return(() -> op);
+	    }
+	    Pipe.Op[] ops = new Pipe.Op[ols.size()];
+	    for(int i = 0; i < ops.length; i++)
+		ops[i] = ols.get(0).rstate();
+	    Pipe.Op cmp = Pipe.Op.compose(ops);
+	    return(() -> cmp);
 	});
+    
+    public final AttrCache<Color> olcol = new AttrCache<>(this::info, info -> {
+	Color c = null;
+	for (ItemInfo inf : info) {
+	    if(inf instanceof GItem.ColorInfo) {
+		c = ((GItem.ColorInfo) inf).olcol();
+		break;
+	    }
+	}
+	final Color color = c;
+	return (() -> color);
+    });
+    
     public final AttrCache<GItem.InfoOverlay<?>[]> itemols = new AttrCache<>(this::info, info -> {
 	    ArrayList<GItem.InfoOverlay<?>> buf = new ArrayList<>();
 	    for(ItemInfo inf : info) {
@@ -165,9 +182,12 @@ public class WItem extends Widget implements DTarget2 {
 	    GItem.InfoOverlay<?>[] ret = buf.toArray(new GItem.InfoOverlay<?>[0]);
 	    return(() -> ret);
 	});
+
+    public final AttrCache<Level> fullness = new AttrCache<>(this::info, info -> () -> ItemInfo.find(Level.class, info));
+    
     public final AttrCache<Double> itemmeter = new AttrCache<Double>(this::info, AttrCache.map1(GItem.MeterInfo.class, minf -> minf::meter));
     
-    public final AttrCache<ItemInfo.Contents.Content> contains;
+    public final AttrCache<ItemData.Content> contains;
     
     public final AttrCache<QualityList> itemq;
     
@@ -181,9 +201,9 @@ public class WItem extends Widget implements DTarget2 {
     }));
     
     public final AttrCache<Tex> durability = new AttrCache<Tex>(this::info, AttrCache.cache(info -> {
-	Pair<Integer, Integer> wear = ItemInfo.getWear(info);
+	Wear wear = ItemInfo.getWear(info);
 	if(wear == null) return (null);
-	return Text.renderstroked(String.valueOf(wear.b - wear.a), DURABILITY_COLOR, Color.BLACK).tex();
+	return Text.renderstroked(String.valueOf(wear.m - wear.d), DURABILITY_COLOR, Color.BLACK).tex();
     })) {
 	@Override
 	public Tex get() {
@@ -192,9 +212,9 @@ public class WItem extends Widget implements DTarget2 {
     };
     
     public final AttrCache<Pair<Double, Color>> wear = new AttrCache<>(this::info, AttrCache.cache(info->{
-	Pair<Integer, Integer> wear = ItemInfo.getWear(info);
+	Wear wear = ItemInfo.getWear(info);
 	if(wear == null) return (null);
-	double bar = (float) (wear.b - wear.a) / wear.b;
+	double bar = (float) (wear.m - wear.d) / wear.m;
 	return new Pair<>(bar, Utils.blendcol(bar, Color.RED, Color.ORANGE, Color.YELLOW, Color.GREEN));
     }));
     
@@ -214,14 +234,14 @@ public class WItem extends Widget implements DTarget2 {
 	}
     };
     
-    public final AttrCache<List<ItemInfo>> gilding = new AttrCache<List<ItemInfo>>(this::info, AttrCache.cache(info -> ItemInfo.findall("Slotted", info)));
+    public final AttrCache<List<Slotted>> gilding = new AttrCache<>(this::info, AttrCache.cache(info -> ItemInfo.findall(Slotted.class, info)));
     
-    public final AttrCache<List<ItemInfo>> slots = new AttrCache<List<ItemInfo>>(this::info, AttrCache.cache(info -> ItemInfo.findall("ISlots", info)));
+    public final AttrCache<List<ISlots>> slots = new AttrCache<>(this::info, AttrCache.cache(info -> ItemInfo.findall(ISlots.class, info)));
 
     public final AttrCache<Boolean> gildable = new AttrCache<Boolean>(this::info, AttrCache.cache(info -> {
-	List<ItemInfo> slots = ItemInfo.findall("ISlots", info);
-	for(ItemInfo slot : slots) {
-	    if(Reflect.getFieldValueInt(slot, "left") > 0) {
+	List<ISlots> slots = ItemInfo.findall(ISlots.class, info);
+	for(ISlots slot : slots) {
+	    if(slot.left > 0) {
 		return true;
 	    }
 	}
@@ -269,16 +289,23 @@ public class WItem extends Widget implements DTarget2 {
 	if(spr != null) {
 	    Coord sz = spr.sz();
 	    g.defstate();
-	    if(olcol.get() != null)
-		g.usestate(new ColorMask(olcol.get()));
-	    if(item.matches) {
+	    if(rstate.get() != null)
+		g.usestate(rstate.get());
+	    if(item.matches()) {
 		g.chcolor(MATCH_COLOR);
+		g.rect(Coord.z, sz);
+		g.chcolor();
+	    } else if(CFG.HIGHLIGHT_BROKEN_ITEMS.get() && wear.get() != null && wear.get().a <= 0) {
+		g.chcolor(Color.RED);
 		g.rect(Coord.z, sz);
 		g.chcolor();
 	    }
 	    drawmain(g, spr);
 	    g.defstate();
 	    GItem.InfoOverlay<?>[] ols = itemols.get();
+	    if(item.alchemyMatches()) {
+		g.aimage(alchemy_mark, Coord.of(0, sz.y), 0, 1);
+	    }
 	    if(ols != null) {
 		for(GItem.InfoOverlay<?> ol : ols)
 		    ol.draw(g);
@@ -295,7 +322,7 @@ public class WItem extends Widget implements DTarget2 {
     private void drawmeter(GOut g, Coord sz) {
 	double meter = meter();
 	if(meter > 0) {
-	    Tex studyTime = getStudyTime();
+	    Tex studyTime = getMeterTime();
 	    if(studyTime == null && CFG.PROGRESS_NUMBER.get()) {
 		Tex tex = Text.renderstroked(String.format("%d%%", Math.round(100 * meter))).tex();
 		g.aimage(tex, sz.div(2), 0.5, 0.5);
@@ -322,13 +349,22 @@ public class WItem extends Widget implements DTarget2 {
     private String cachedTipValue = null;
     private Tex cachedStudyTex = null;
     
-    private Tex getStudyTime() {
-	Pair<String, String> data = study.get();
-	String value = data == null ? null : data.a;
-	String tip = data == null ? null : data.b;
+    private Tex getMeterTime() {
+	String value = null;
+	String tip = null;
+	
+	if(WindowDetector.isWindowType(this, WND_STUDY, WND_CHARACTER_SHEET)) {
+	    Pair<String, String> data = study.get();
+	    value = data == null ? null : data.a;
+	    tip = data == null ? null : data.b;
+	} else {
+	    int remaining = remainingSeconds();
+	    if(remaining >= 0) {value = ClientUtils.formatTimeShort(remaining);}
+	}
+	
 	if(!Objects.equals(tip, cachedTipValue)) {
 	    cachedTipValue = tip;
-	    longtip = null;
+	    clearLongTip();
 	}
 	if(value != null) {
 	    if(!Objects.equals(value, cachedStudyValue)) {
@@ -413,24 +449,28 @@ public class WItem extends Widget implements DTarget2 {
 	return CFG.Q_SHOW_SINGLE.get() ? SingleType.Quality : null;
     }
 
-    public boolean mousedown(Coord c, int btn) {
-	if(checkXfer(btn)) {
+    public void clearLongTip() {longtip = null;}
+
+    public boolean mousedown(MouseDownEvent ev) {
+	if(checkXfer(ev.b)) {
 	    return true;
-	} else if(btn == 1) {
-	    item.wdgmsg("take", c);
+	} else if(ev.b == 1) {
+	    if(ItemHelpers.canTake(this)) {
+		item.wdgmsg("take", ev.c);
+	    }
 	    return true;
-	} else if(btn == 3) {
+	} else if(ev.b == 3) {
 	    synchronized (rClickListeners) {
 		if(rClickListeners.isEmpty()) {
 		    FlowerMenu.lastItem(this);
-		    item.wdgmsg("iact", c, ui.modflags());
+		    item.wdgmsg("iact", ev.c, ui.modflags());
 		} else {
 		    rClickListeners.forEach(action -> action.call(this, c, ui.modflags()));
 		}
 	    }
 	    return(true);
 	}
-	return(false);
+	return(super.mousedown(ev));
     }
     
     public void onRClick(Action3<WItem, Coord, Integer> action) {
@@ -447,6 +487,10 @@ public class WItem extends Widget implements DTarget2 {
 	rclick(Coord.z, 0);
     }
     
+    public void rclick(int modflags) {
+	rclick(Coord.z, modflags);
+    }
+    
     
     public void rclick(Coord c, int flags) {
         FlowerMenu.lastGob(null);
@@ -455,6 +499,37 @@ public class WItem extends Widget implements DTarget2 {
     
     public boolean is(String what) {
 	return item.is(what);
+    }
+    
+    public int remainingSeconds() {
+	double meter = meter();
+	if(meter <= 0) {return -1;}
+	
+	double remaining = -1;
+	if(WindowDetector.isWindowType(this, WND_SMELTER, WND_STACK_FURNACE)) {
+	    remaining = WELL_MINED.matches(info()) ? 41.25d : 55d; //ore smelting time in minutes
+	} else if(WindowDetector.isWindowType(this, WND_FINERY_FORGE)) {
+	    //TODO: check for coin melting time
+	    remaining = 9d; //bar smelting time in minutes
+	}
+	
+	if(remaining > 0) {
+	    remaining *= 60 * (1d - meter); //remaining seconds
+	    Gob gob = gob();
+	    if(gob != null && gob.is(GobTag.LIT)) {
+		remaining -= (System.currentTimeMillis() - item.meterUpdated) / 1000d; //adjust for time passed since last update
+	    }
+	}
+	
+	return (int) remaining;
+    }
+
+    private Gob gob() {
+	WindowX wnd = getparent(WindowX.class);
+	if(wnd == null) {return null;}
+	Gob gob = wnd.gob;
+	if(gob == null || gob.disposed()) {return null;}
+	return gob;
     }
 
     private boolean checkXfer(int button) {
@@ -497,35 +572,57 @@ public class WItem extends Widget implements DTarget2 {
 	if(inv != null) {inv.itemsChanged();}
     }
     
-    public boolean drop(WItem target, Coord cc, Coord ul) {
+    public boolean drop(Drop ev) {
 	return(false);
     }
 
-    public boolean iteminteract(WItem target, Coord cc, Coord ul) {
-	if(!GildingWnd.processGilding(ui,this, target)) {
+    public boolean iteminteract(DTarget.Interact ev) {
+	if(!GildingWnd.processGilding(ui,this, ev.src)) {
 	    item.wdgmsg("itemact", ui.modflags());
 	}
 	return(true);
     }
 
-    public boolean mousehover(Coord c) {
-	if(item.contents != null && (!CFG.UI_STACK_SUB_INV_ON_SHIFT.get() || ui.modshift)) {
-	    item.hovering = this;
+    public boolean mousehover(MouseHoverEvent ev, boolean on) {
+	if(on && (item.contents != null) && (!CFG.UI_STACK_SUB_INV_ON_SHIFT.get() || ui.modshift)) {
+	    item.hovering(this);
 	    return(true);
 	}
-	return(super.mousehover(c));
+	return(super.mousehover(ev, on));
+    }
+
+    public double quality() {
+	return item.quality();
     }
     
+    public String sortName() {
+	if(lspr instanceof Gemstone) {
+	    return ((Gemstone)lspr).sortName();
+	}
+	return item.name.get(item.resname());
+    }
+
+    public int sortValue() {
+	if(lspr instanceof Gemstone) {
+	    return ((Gemstone)lspr).sortValue();
+	}
+	return 0;
+    }
+
     public void tryDrop() {
-	checkDrop = true;
+	if(item.contents == null) {
+	    checkDrop = true;
+	} else {
+	    item.contents.children(WItem.class).forEach(WItem::tryDrop);
+	}
     }
     
     private void checkDrop() {
 	if(checkDrop) {
-	    String name = this.name.get(null);
+	    String name = ItemAutoDrop.name(this);
 	    if(name != null) {
 		checkDrop = false;
-		if((!item.matches || !CFG.AUTO_DROP_RESPECT_FILTER.get()) && ItemAutoDrop.needDrop(name)) {
+		if((!item.matches() || !CFG.AUTO_DROP_RESPECT_FILTER.get()) && ItemAutoDrop.needDrop(name)) {
 		    item.drop();
 		}
 	    }

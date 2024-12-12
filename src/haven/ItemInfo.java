@@ -26,6 +26,12 @@
 
 package haven;
 
+import haven.res.ui.tt.attrmod.AttrMod;
+import haven.res.ui.tt.ncont.NamedContents;
+import haven.res.ui.tt.slot.Slotted;
+import haven.res.ui.tt.slots.ISlots;
+import haven.res.ui.tt.wear.Wear;
+import me.ender.DamageTip;
 import me.ender.Reflect;
 
 import java.awt.*;
@@ -39,6 +45,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public abstract class ItemInfo {
+    public static final int LEFT = 0;
+    public static final int CENTER = 1;
+    public static final int RIGHT = 2;
     public static final Resource armor_hard = Resource.local().loadwait("gfx/hud/chr/custom/ahard");
     public static final Resource armor_soft = Resource.local().loadwait("gfx/hud/chr/custom/asoft");
     public static final Resource detection = Resource.local().loadwait("gfx/hud/chr/custom/detect");
@@ -50,12 +59,10 @@ public abstract class ItemInfo {
     public static ItemInfo make(Session sess, String resname, Object... args) {
 	Resource res = Resource.remote().load(resname).get();
 	InfoFactory f = res.layer(Resource.CodeEntry.class).get(InfoFactory.class);
-	return f.build(new SessOwner(sess), args);
+	return f.build(new SessOwner(sess), null, args);
     }
     
     public interface Owner extends OwnerContext {
-	@Deprecated
-	public default Glob glob() {return(context(Glob.class));}
 	public List<ItemInfo> info();
     }
 
@@ -88,6 +95,7 @@ public abstract class ItemInfo {
     }
 
     public static class Raw {
+	public static final Raw nil = new Raw(new Object[0], 0);
 	public final Object[] data;
 	public final double time;
 
@@ -103,13 +111,7 @@ public abstract class ItemInfo {
 
     @Resource.PublishedCode(name = "tt", instancer = FactMaker.class)
     public static interface InfoFactory {
-	public default ItemInfo build(Owner owner, Raw raw, Object... args) {
-	    return(build(owner, args));
-	}
-	@Deprecated
-	public default ItemInfo build(Owner owner, Object... args) {
-	    throw(new AbstractMethodError("info factory missing either build bmethod"));
-	}
+	public ItemInfo build(Owner owner, Raw raw, Object... args);
     }
 
     public static class FactMaker extends Resource.PublishedCode.Instancer.Chain<InfoFactory> {
@@ -148,23 +150,38 @@ public abstract class ItemInfo {
     }
 
     public static class Layout {
-	private final List<Tip> tips = new ArrayList<Tip>();
-	private final Map<ID, Tip> itab = new HashMap<ID, Tip>();
+	public final Owner owner;
 	public final CompImage cmp = new CompImage();
 	public int width = 0;
+	private final List<Tip> tips = new ArrayList<>();
+	private final Map<TipID, Tip> itab = new HashMap<>();
 
-	public interface ID<T extends Tip> {
-	    T make();
+	public Layout(Owner owner) {
+	    this.owner = owner;
+	}
+
+	public interface TipID<T extends Tip> {
+	    public T make(Owner owner);
+	}
+
+	@Deprecated
+	public interface ID<T extends Tip> extends TipID<T> {
+	    public T make();
+	    public default T make(Owner owner) {return(make());}
 	}
 
 	@SuppressWarnings("unchecked")
-	public <T extends Tip> T intern(ID<T> id) {
+	public <T extends Tip> T intern(TipID<T> id) {
 	    T ret = (T)itab.get(id);
 	    if(ret == null) {
-		itab.put(id, ret = id.make());
+		itab.put(id, ret = id.make(owner));
 		add(ret);
 	    }
 	    return(ret);
+	}
+
+	public <T extends Tip> T intern(ID<T> id) {
+	    return(intern((TipID<T>)id));
 	}
 
 	public void add(Tip tip) {
@@ -250,11 +267,11 @@ public abstract class ItemInfo {
 	}
 
 	public static class Default implements InfoFactory {
-	    public ItemInfo build(Owner owner, Object... args) {
+	    public static String get(Owner owner) {
 		if(owner instanceof SpriteOwner) {
 		    GSprite spr = ((SpriteOwner)owner).sprite();
 		    if(spr instanceof Dynamic)
-			return(new Name(owner, ((Dynamic)spr).name()));
+			return(((Dynamic)spr).name());
 		}
 		if(!(owner instanceof ResOwner))
 		    return(null);
@@ -262,7 +279,12 @@ public abstract class ItemInfo {
 		Resource.Tooltip tt = res.layer(Resource.tooltip);
 		if(tt == null)
 		    throw(new RuntimeException("Item resource " + res + " is missing default tooltip"));
-		return(new Name(owner, tt.t));
+		return(tt.t);
+	    }
+
+	    public ItemInfo build(Owner owner, Raw raw, Object... args) {
+		String nm = get(owner);
+		return((nm == null) ? null : new Name(owner, nm));
 	    }
 	}
     }
@@ -280,7 +302,7 @@ public abstract class ItemInfo {
 	}
 
 	public void layout(Layout l) {
-	    BufferedImage t = tipimg((l.width == 0) ? UI.scale(200) : l.width);
+	    BufferedImage t = tipimg((l.width == 0) ? Math.max(UI.scale(200), l.cmp.sz.x) : l.width);
 	    if(t != null)
 		l.cmp.add(t, new Coord(0, l.cmp.sz.y + UI.scale(10)));
 	}
@@ -289,7 +311,6 @@ public abstract class ItemInfo {
     }
 
     public static class Contents extends Tip {
-        private static final Pattern PARSE = Pattern.compile("([\\d.]*) ([\\w]+) of (.*)");
 	public final List<ItemInfo> sub;
 	private static final Text.Line ch = Text.render("Contents:");
 	
@@ -314,75 +335,18 @@ public abstract class ItemInfo {
 		    public int order() {return(100);}
 		});
 	}
-    
-	public Content content() {
-	    QualityList q = QualityList.make(sub);
-	    for (ItemInfo i : sub) {
-		if(i instanceof Name) {
-		    return content(((Name) i).original, q);
-		}
-	    }
-	    return Content.EMPTY;
-	}
-	
-	public static Content content(String name){
-	    return content(name, QualityList.make(Collections.emptyList()));
-	}
-	
-	public static Content content(String name, QualityList q){
-	    Matcher m = PARSE.matcher(name);
-	    if(m.find()) {
-		float count = 0;
-		try {
-		    count = Float.parseFloat(m.group(1));
-		} catch (Exception ignored) {}
-		return new Content(m.group(3), m.group(2), count, q);
-	    }
-	    return Content.EMPTY;
-	} 
-    
-	public static class Content {
-	    public final String name;
-	    public final String unit;
-	    public final float count;
-	    public final QualityList q;
-	    
-	    public Content(String name, String unit, float count) {
-		this(name, unit, count, QualityList.make(Collections.emptyList()));
-	    }
-	    
-	    public Content(String name, String unit, float count, QualityList q) {
-		this.name = name;
-		this.unit = unit;
-		this.count = count;
-		this.q = q;
-	    }
-	    
-	    public String name() {
-		if("seeds".equals(unit)) {
-		    return String.format("Seeds of %s", name);
-		}
-		return name;
-	    }
-	
-	    public boolean is(String what) {
-		if(name == null || what == null) {
-		    return false;
-		}
-		return name.contains(what);
-	    }
-	    
-	    public boolean empty() {return count == 0 || name == null;}
-	
-	    public static final Content EMPTY = new Content(null, null, 0);
-	}
     }
 
     public static BufferedImage catimgs(int margin, BufferedImage... imgs) {
-	return catimgs(margin, false, imgs);
+	return catimgs(margin, LEFT, imgs);
     }
 
     public static BufferedImage catimgs(int margin, boolean right, BufferedImage... imgs) {
+	return catimgs(margin, right ? RIGHT : LEFT, imgs);
+	
+    }
+    
+    public static BufferedImage catimgs(int margin, int align, BufferedImage... imgs) {
 	int w = 0, h = -margin;
 	for(BufferedImage img : imgs) {
 	    if(img == null)
@@ -397,7 +361,13 @@ public abstract class ItemInfo {
 	for(BufferedImage img : imgs) {
 	    if(img == null)
 		continue;
-	    g.drawImage(img, right ? w - img.getWidth() : 0, y, null);
+	    int x = 0;
+	    if(align == RIGHT) {
+		x = w - img.getWidth();
+	    } else if(align == CENTER) {
+		x = (w - img.getWidth()) / 2;
+	    }
+	    g.drawImage(img, x, y, null);
 	    y += img.getHeight() + margin;
 	}
 	g.dispose();
@@ -434,8 +404,10 @@ public abstract class ItemInfo {
 	return(ret);
     }
 
-    public static BufferedImage longtip(List<ItemInfo> info) {
-	Layout l = new Layout();
+    public static BufferedImage longtip(List<? extends ItemInfo> info) {
+	if(info.isEmpty())
+	    return(null);
+	Layout l = new Layout(info.get(0).owner);
 	for(ItemInfo ii : info) {
 	    if(ii instanceof Tip) {
 		Tip tip = (Tip)ii;
@@ -448,23 +420,28 @@ public abstract class ItemInfo {
     }
 
     public static BufferedImage shorttip(List<ItemInfo> info) {
-	Layout l = new Layout();
+	List<ItemInfo> sinfo = new ArrayList<>();
 	for(ItemInfo ii : info) {
 	    if(ii instanceof Tip) {
 		Tip tip = ((Tip)ii).shortvar();
 		if(tip != null)
-		    l.add(tip);
+		    sinfo.add(tip);
 	    }
 	}
-	if(l.tips.size() < 1)
-	    return(null);
-	return(l.render());
+	return(longtip(sinfo));
     }
 
     public static <T> T find(Class<T> cl, List<ItemInfo> il) {
 	for(ItemInfo inf : il) {
 	    if(cl.isInstance(inf))
 		return(cl.cast(inf));
+	}
+	return(null);
+    }
+
+    public static ItemInfo findlike(String cl, List<ItemInfo> il) {
+	for(ItemInfo inf : il) {
+	    if(Reflect.like(inf, cl)) {return inf;}
 	}
 	return(null);
     }
@@ -486,21 +463,25 @@ public abstract class ItemInfo {
 
     public static List<ItemInfo> buildinfo(Owner owner, Raw raw) {
 	List<ItemInfo> ret = new ArrayList<ItemInfo>();
+	Resource.Resolver rr = owner.context(Resource.Resolver.class);
 	for(Object o : raw.data) {
 	    if(o instanceof Object[]) {
 		Object[] a = (Object[])o;
-		Resource ttres;
-		if(a[0] instanceof Integer) {
-		    ttres = owner.glob().sess.getres((Integer)a[0]).get();
-		} else if(a[0] instanceof Resource) {
-		    ttres = (Resource)a[0];
-		} else if(a[0] instanceof Indir) {
-		    ttres = (Resource)((Indir)a[0]).get();
+		ItemInfo inf;
+		if(a[0] instanceof InfoFactory) {
+		    inf = ((InfoFactory)a[0]).build(owner, raw, a);
 		} else {
-		    throw(new ClassCastException("Unexpected info specification " + a[0].getClass()));
+		    Resource ttres;
+		    if(a[0] instanceof Resource) {
+			ttres = (Resource)a[0];
+		    } else if(a[0] instanceof Indir) {
+			ttres = (Resource)((Indir)a[0]).get();
+		    } else {
+			ttres = rr.getresv(a[0]).get();
+		    }
+		    InfoFactory f = ttres.getcode(InfoFactory.class, true);
+		    inf = f.build(owner, raw, a);
 		}
-		InfoFactory f = ttres.getcode(InfoFactory.class, true);
-		ItemInfo inf = f.build(owner, raw, a);
 		if(inf != null)
 		    ret.add(inf);
 	    } else if(o instanceof String) {
@@ -509,6 +490,7 @@ public abstract class ItemInfo {
 		throw(new ClassCastException("Unexpected object type " + o.getClass() + " in item info array."));
 	    }
 	}
+	DamageTip.process(ret, owner);
 	return(ret);
     }
 
@@ -548,24 +530,26 @@ public abstract class ItemInfo {
 	}
 	return null;
     }
-    
-    public static Contents.Content getContent(List<ItemInfo> infos) {
-	for (ItemInfo info : infos) {
-	    if(info instanceof Contents) {
-		return ((Contents) info).content();
+
+    public static ItemData.Content getContent(List<ItemInfo> infos) {
+	Contents contents = find(Contents.class, infos);
+	if(contents != null) {
+	    Name name = find(Name.class, contents.sub);
+	    if(name != null) {
+		return ItemData.Content.parse(name.original, QualityList.make(contents.sub));
+	    }
+	} else {
+	    NamedContents namedContents = find(NamedContents.class, infos);
+	    if(namedContents != null) {
+		return ItemData.Content.parse(namedContents.name, QualityList.make(namedContents.sub));
 	    }
 	}
-	return Contents.Content.EMPTY;
+
+	return ItemData.Content.EMPTY;
     }
     
-    public static Pair<Integer, Integer> getWear(List<ItemInfo> infos) {
-	infos = findall("haven.res.ui.tt.wear.Wear", infos);
-	for (ItemInfo info : infos) {
-	    if(Reflect.hasField(info, "m") && Reflect.hasField(info, "d")){
-		return new Pair<>(Reflect.getFieldValueInt(info, "d"), Reflect.getFieldValueInt(info, "m"));
-	    }
-	}
-	return null;
+    public static Wear getWear(List<ItemInfo> infos) {
+	return find(Wear.class, infos);
     }
 
     public static Pair<Integer, Integer> getArmor(List<ItemInfo> infos) {
@@ -578,30 +562,29 @@ public abstract class ItemInfo {
 	return null;
     }
 
-    private final static String[] mining_tools = {"Pickaxe", "Stone Axe", "Metal Axe", "Woodsman's Axe"};
+    private final static String[] mining_tools = {"Pickaxe", "Stone Axe", "Tinker's Throwing Axe", "Metal Axe", "Woodsman's Axe"};
     
     @SuppressWarnings("unchecked")
     public static Map<Resource, Integer> getBonuses(List<ItemInfo> infos, Map<String, Glob.CAttr> attrs) {
-	List<ItemInfo> slotInfos = ItemInfo.findall("ISlots", infos);
-	List<ItemInfo> gilding = ItemInfo.findall("Slotted", infos);
+	List<ISlots> slotInfos = ItemInfo.findall(ISlots.class, infos);
+	List<Slotted> gilding = ItemInfo.findall(Slotted.class, infos);
 	Map<Resource, Integer> bonuses = new HashMap<>();
 	try {
-	    for (ItemInfo islots : slotInfos) {
-		List<Object> slots = (List<Object>) Reflect.getFieldValue(islots, "s");
-		for (Object slot : slots) {
-		    parseAttrMods(bonuses, (List) Reflect.getFieldValue(slot, "info"));
+	    for (ISlots islots : slotInfos) {
+		for (ISlots.SItem slot : islots.s) {
+		    parseAttrMods(bonuses, ItemInfo.findall(AttrMod.class, slot.info));
 		}
 	    }
-	    for (ItemInfo info : gilding) {
-		List<Object> slots = (List<Object>) Reflect.getFieldValue(info, "sub");
-		parseAttrMods(bonuses, slots);
+	    for (Slotted info : gilding) {
+		parseAttrMods(bonuses, ItemInfo.findall(AttrMod.class, info.sub));
 	    }
-	    parseAttrMods(bonuses, ItemInfo.findall("haven.res.ui.tt.attrmod.AttrMod", infos));
+	    parseAttrMods(bonuses, ItemInfo.findall(AttrMod.class, infos));
 	} catch (Exception ignored) {}
-	Pair<Integer, Integer> wear = ItemInfo.getArmor(infos);
-	if (wear != null) {
-	    bonuses.put(armor_hard, wear.a);
-	    bonuses.put(armor_soft, wear.b);
+	Wear wear = ItemInfo.getWear(infos);
+	Pair<Integer, Integer> armor = ItemInfo.getArmor(infos);
+	if(wear != null && armor != null && wear.d < wear.m) {
+	    bonuses.put(armor_hard, armor.a);
+	    bonuses.put(armor_soft, armor.b);
 	}
 	if(attrs != null) {
 	    Glob.CAttr str = attrs.get("str");
@@ -610,7 +593,9 @@ public abstract class ItemInfo {
 	    if(str != null && name != null && !q.isEmpty() && GobTag.ofType(name.original, mining_tools)) {
 		double miningStrength = str.comp * q.single().value;
 		if(name.original.equals("Pickaxe")) {
-		    miningStrength = 2 * miningStrength;
+		    miningStrength *= 2;
+		} else if(!name.original.equals("Stone Axe")) {
+		    miningStrength *= 1.5d;
 		}
 		bonuses.put(mining, (int) Math.sqrt(miningStrength));
 	    }
@@ -619,7 +604,7 @@ public abstract class ItemInfo {
     }
     
     public static List<Pair<Resource, Integer>> getInputs(List<ItemInfo> infos) {
-	List<ItemInfo> inputInfos = ItemInfo.findall("Inputs", infos);
+	List<ItemInfo> inputInfos = ItemInfo.findall("haven.res.ui.tt.inputs.Inputs", infos);
 	List<Pair<Resource, Integer>> result = new LinkedList<>();
 	try {
 	    for (ItemInfo info : inputInfos) {
@@ -629,8 +614,6 @@ public abstract class ItemInfo {
 		    Object spec = Reflect.getFieldValue(input, "spec");
 		    ResData resd = (ResData) Reflect.getFieldValue(spec, "res");
 		    Resource r = resd.res.get();
-		    //Resource.Tooltip tt = r.layer(Resource.tooltip);
-		    //System.out.printf("%s x %d%n", (tt != null) ? tt.t : r.name, num);
 		    result.add(new Pair<>(r, num));
 		}
 	    }
@@ -639,13 +622,12 @@ public abstract class ItemInfo {
     }
 
 
-    @SuppressWarnings("unchecked")
-    public static void parseAttrMods(Map<Resource, Integer> bonuses, List infos) {
-	for (Object inf : infos) {
-	    List<Object> mods = (List<Object>) Reflect.getFieldValue(inf, "mods");
-	    for (Object mod : mods) {
-		Resource attr = (Resource) Reflect.getFieldValue(mod, "attr");
-		int value = Reflect.getFieldValueInt(mod, "mod");
+    public static void parseAttrMods(Map<Resource, Integer> bonuses, List<AttrMod> infos) {
+	for (AttrMod inf : infos) {
+	    Collection<AttrMod.Mod> mods = inf.mods;
+	    for (AttrMod.Mod mod : mods) {
+		Resource attr = mod.attr;
+		int value = mod.mod;
 		if (bonuses.containsKey(attr)) {
 		    bonuses.put(attr, bonuses.get(attr) + value);
 		} else {
@@ -653,24 +635,6 @@ public abstract class ItemInfo {
 		}
 	    }
 	}
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<Resource, Integer> parseAttrMods2(List infos) {
-	Map<Resource, Integer> bonuses = new HashMap<>();
-	for (Object inf : infos) {
-	    List<Object> mods = (List<Object>) Reflect.getFieldValue(inf, "mods");
-	    for (Object mod : mods) {
-		Resource attr = (Resource) Reflect.getFieldValue(mod, "attr");
-		int value = Reflect.getFieldValueInt(mod, "mod");
-		if (bonuses.containsKey(attr)) {
-		    bonuses.put(attr, bonuses.get(attr) + value);
-		} else {
-		    bonuses.put(attr, value);
-		}
-	    }
-	}
-	return bonuses;
     }
 
     private static String dump(Object arg) {

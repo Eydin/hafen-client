@@ -295,6 +295,18 @@ public class Matrix4f {
 	    r[i] *= det;
 	return(new Matrix4f(r));
     }
+
+    public void norm(int ix, int iy, int iz) {
+	float x = m[ix];
+	float y = m[iy];
+	float z = m[iz];
+	float a = (float) Math.sqrt((x * x) + (y * y) + (z * z));
+	if(a != 0.0) {
+	    m[ix] = x / a;
+	    m[iy] = y / a;
+	    m[iz] = z / a;
+	}
+    }
     
     public String toString() {
 	StringBuilder buf = new StringBuilder();

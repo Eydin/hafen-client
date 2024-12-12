@@ -51,6 +51,19 @@ public class RUtils {
 	}
 	return(added);
     }
+    
+    public static Collection<Slot> multiaddSafe(Collection<Slot> slots, Node node) {
+	Collection<Slot> added = new ArrayList<>(slots.size());
+	try {
+	    for(Slot slot : slots)
+		added.add(slot.add(node));
+	} catch(RuntimeException e) {
+	    for(Slot slot : added)
+		slot.remove();
+	}
+	catch (Exception ignored){}
+	return(added);
+    }
 
     public static void multirem(Collection<Slot> slots) {
 	if(slots == null)

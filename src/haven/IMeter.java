@@ -34,11 +34,12 @@ public class IMeter extends LayerMeter {
     public static final Coord fsz = UI.scale(101, 24);
     public static final Coord msz = UI.scale(75, 10);
     public final Indir<Resource> bg;
+    public String tip;
 
     @RName("im")
     public static class $_ implements Factory {
 	public Widget create(UI ui, Object[] args) {
-	    Indir<Resource> bg = ui.sess.getres((Integer)args[0]);
+	    Indir<Resource> bg = ui.sess.getresv(args[0]);
 	    List<Meter> meters = decmeters(args, 1);
 	    return(new IMeter(bg, meters));
 	}
@@ -49,7 +50,13 @@ public class IMeter extends LayerMeter {
 	this.bg = bg;
 	set(meters);
     }
-
+    
+    @Override
+    public Widget settip(String text) {
+	tip = text;
+	return super.settip(text);
+    }
+    
     public void draw(GOut g) {
 	try {
 	    Tex bg = this.bg.get().flayer(Resource.imgc).tex();
@@ -66,5 +73,9 @@ public class IMeter extends LayerMeter {
 	    g.image(bg, Coord.z);
 	} catch(Loading l) {
 	}
+    }
+
+    public double meter(int idx) {
+	return meters.size() > idx ? meters.get(idx).a : -1;
     }
 }

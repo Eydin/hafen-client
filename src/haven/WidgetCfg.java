@@ -64,6 +64,12 @@ public class WidgetCfg {
 	store();
     }
     
+    public static synchronized void reset(String name) {
+	if(name == null) {return;}
+	CFG.remove(name);
+	store();
+    }
+    
     private static synchronized void store() {
 	Config.saveFile(CONFIG_JSON, gson.toJson(CFG));
     }

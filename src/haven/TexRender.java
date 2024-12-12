@@ -128,8 +128,11 @@ public abstract class TexRender implements Tex, Disposable {
 	    gc[6], gc[7], tc[6] * ix, tc[7] * iy,
 	};
 	g.usestate(draw);
-	g.out.draw1(g.state(), new Model(Model.Mode.TRIANGLE_STRIP, new VertexArray(vf_tex2d, new VertexArray.Buffer(data.length * 4, DataBuffer.Usage.EPHEMERAL, DataBuffer.Filler.of(data))), null, 0, 4));
-	g.usestate(ColorTex.slot);
+	try {
+	    g.out.draw1(g.state(), new Model(Model.Mode.TRIANGLE_STRIP, new VertexArray(vf_tex2d, new VertexArray.Buffer(data.length * 4, DataBuffer.Usage.EPHEMERAL, DataBuffer.Filler.of(data))), null, 0, 4));
+	} finally {
+	    g.usestate(TexDraw.slot);
+	}
     }
 
     @Material.ResName("tex")
@@ -141,12 +144,15 @@ public abstract class TexRender implements Tex, Disposable {
 	    final int tid;
 	    int a = 0;
 	    if(args[a] instanceof String) {
-		tres = res.pool.load((String)args[a], (Integer)args[a + 1]);
-		tid = (Integer)args[a + 2];
+		tres = res.pool.load((String)args[a], Utils.iv(args[a + 1]));
+		if(args.length > a + 2)
+		    tid = Utils.iv(args[a + 2]);
+		else
+		    tid = -1;
 		a += 3;
 	    } else {
 		tres = res.indir();
-		tid = (Integer)args[a];
+		tid = Utils.iv(args[a]);
 		a += 1;
 	    }
 	    boolean tclip = defclip;
@@ -161,7 +167,11 @@ public abstract class TexRender implements Tex, Disposable {
 	    return(new Material.Res.Resolver() {
 		    public void resolve(Collection<Pipe.Op> buf, Collection<Pipe.Op> dynbuf) {
 			TexRender tex;
-			TexR rt = tres.get().layer(TexR.class, tid);
+			TexR rt;
+			if(tid >= 0)
+			    rt = tres.get().layer(TexR.class, tid);
+			else
+			    rt = tres.get().layer(TexR.class);
 			if(rt != null) {
 			    tex = rt.tex();
 			} else {

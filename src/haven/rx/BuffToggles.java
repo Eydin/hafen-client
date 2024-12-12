@@ -26,12 +26,16 @@ public class BuffToggles {
 
 	toggles.forEach(toggle -> toggle.setup(gameUI));
     }
+    
+    public static void menuBound(MenuGrid menu) {
+	toggles.forEach(toggle -> toggle.menuBound(menu));
+    }
 
     private static void toggle(String msg) {
 	toggles.stream().filter(t -> t.matches(msg)).findFirst().ifPresent(toggle -> toggle.update(msg));
     }
 
-    public static class Toggle implements CFG.Observer<Boolean>, Observer {
+    public static class Toggle {
 
 	public final String name;
 	private final String resname;
@@ -43,7 +47,9 @@ public class BuffToggles {
 	public CFG<Boolean> show;
 	public CFG<Boolean> startup;
 	private GameUI gui;
+	private MenuGrid menu;
 	private boolean toggled = false;
+	private boolean init = false;
 
 	public Toggle(String name, String resname, String action, String msgOn, String msgOff) {
 	    this.name = L10N.tooltip(resname, name);
@@ -78,41 +84,37 @@ public class BuffToggles {
 	    }
 	}
 
-	public void act() {
-	    if(gui.menu != null) {
-		gui.menu.senduse(action);
+	public boolean act() {
+	    if(gui != null && menu != null) {
+		menu.paginafor(resname).button().use();
+		return true;
 	    } else {
 		toggled = !toggled;
 	    }
+	    return false;
 	}
 
 	public void cfg(CFG<Boolean> show, CFG<Boolean> startup) {
 	    this.show = show;
 	    this.startup = startup;
-
-	    show.observe(this);
-	}
-
-	@Override
-	public void updated(CFG<Boolean> cfg) {
-	    update();
 	}
 
 	public void setup(GameUI gameUI) {
 	    gui = gameUI;
-	    if(gui.menu == null) {
-		gui.menuObservable.addObserver(this);
-	    }
-	    if(startup.get()) {
-		act();
-	    }
+	    init();
 	}
 
-	@Override
-	public void update(Observable o, Object arg) {
-	    gui.menuObservable.deleteObserver(this);
-	    if(toggled) {
-		act();
+	public void menuBound(MenuGrid menu) {
+	   this.menu = menu;
+	   init();
+	}
+	
+	private void init() {
+	    if(init) {return;}
+	    if(startup.get()) {
+		init = act();
+	    } else {
+		init = true;
 	    }
 	}
     }
@@ -126,7 +128,7 @@ public class BuffToggles {
 	}
 
 	@Override
-	public boolean mousedown(Coord c, int btn) {
+	public boolean mousedown(MouseDownEvent ev) {
 	    toggle.act();
 	    return true;
 	}

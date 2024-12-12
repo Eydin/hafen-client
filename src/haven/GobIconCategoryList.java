@@ -1,6 +1,7 @@
 package haven;
 
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.util.Arrays;
 
 public class GobIconCategoryList extends Listbox<GobIconCategoryList.GobCategory> {
@@ -38,7 +39,7 @@ public class GobIconCategoryList extends Listbox<GobIconCategoryList.GobCategory
 	g.frect(Coord.z, g.sz());
 	g.chcolor();
 	try {
-	    GobIcon.SettingsWindow.Icon icon = cat.icon();
+	    GobIcon.SettingsWindow.ListIcon icon = cat.icon();
 	    g.aimage(icon.img(), new Coord(0, elh / 2), 0.0, 0.5);
 	    if(icon.tname != null) {
 		g.aimage(icon.tname.tex(), new Coord(elh + UI.scale(5), elh / 2), 0.0, 0.5);
@@ -52,22 +53,22 @@ public class GobIconCategoryList extends Listbox<GobIconCategoryList.GobCategory
 	} catch (Loading ignored) {}
     }
     
-    public boolean mousedown(Coord c, int button) {
-	int idx = idxat(c);
+    public boolean mousedown(MouseDownEvent ev) {
+	int idx = idxat(ev.c);
 	if((idx >= 0) && (idx < listitems())) {
 	    GobCategory cat = listitem(idx);
 	    if(cat != GobCategory.ALL) {
-		Coord ic = c.sub(idxc(idx));
+		Coord ic = ev.c.sub(idxc(idx));
 		if(ic.isect(showc, CheckBox.sbox.sz())) {
 		    cat.toggle();
 		    return true;
 		}
 	    }
 	}
-	return (super.mousedown(c, button));
+	return (super.mousedown(ev));
     }
     
-    enum GobCategory {
+    public enum GobCategory {
 	ALL("all"),
 	ANIMALS("kritters"),
 	HERBS("herbs"),
@@ -79,7 +80,7 @@ public class GobIconCategoryList extends Listbox<GobIconCategoryList.GobCategory
 	
 	private final String resname;
 	private final CFG<Boolean> cfg;
-	private GobIcon.SettingsWindow.Icon icon;
+	private GobIcon.SettingsWindow.ListIcon icon;
 	
 	private static final String[] ANIMAL_PATHS = {
 	    "/kritter/",
@@ -134,6 +135,7 @@ public class GobIconCategoryList extends Listbox<GobIconCategoryList.GobCategory
 	    "gfx/invobjs/chalcopyrite",
 	    "gfx/invobjs/cinnabar",
 	    "gfx/invobjs/coal",
+	    "gfx/invobjs/cuprite",
 	    "gfx/invobjs/galena",
 	    "gfx/invobjs/hematite",
 	    "gfx/invobjs/hornsilver",
@@ -143,6 +145,7 @@ public class GobIconCategoryList extends Listbox<GobIconCategoryList.GobCategory
 	    "gfx/invobjs/magnetite",
 	    "gfx/invobjs/malachite",
 	    "gfx/invobjs/nagyagite",
+	    "gfx/invobjs/peacockore",
 	    "gfx/invobjs/petzite",
 	    "gfx/invobjs/sylvanite",
 	};
@@ -152,6 +155,7 @@ public class GobIconCategoryList extends Listbox<GobIconCategoryList.GobCategory
 	    "gfx/invobjs/arkose",
 	    "gfx/invobjs/basalt",
 	    "gfx/invobjs/breccia",
+	    "gfx/invobjs/chert",
 	    "gfx/invobjs/corund",
 	    "gfx/invobjs/diabase",
 	    "gfx/invobjs/diorite",
@@ -163,8 +167,11 @@ public class GobIconCategoryList extends Listbox<GobIconCategoryList.GobCategory
 	    "gfx/invobjs/gabbro",
 	    "gfx/invobjs/gneiss",
 	    "gfx/invobjs/granite",
+	    "gfx/invobjs/graywacke",
 	    "gfx/invobjs/greenschist",
+	    "gfx/invobjs/halite",
 	    "gfx/invobjs/hornblende",
+	    "gfx/invobjs/jasper",
 	    "gfx/invobjs/jasper",
 	    "gfx/invobjs/kyanite",
 	    "gfx/invobjs/limestone",
@@ -180,9 +187,11 @@ public class GobIconCategoryList extends Listbox<GobIconCategoryList.GobCategory
 	    "gfx/invobjs/rhyolite",
 	    "gfx/invobjs/sandstone",
 	    "gfx/invobjs/schist",
+	    "gfx/invobjs/serpentine",
 	    "gfx/invobjs/slate",
 	    "gfx/invobjs/soapstone",
 	    "gfx/invobjs/sodalite",
+	    "gfx/invobjs/sunstone",
 	    "gfx/invobjs/zincspar",
 	};
 	
@@ -191,23 +200,23 @@ public class GobIconCategoryList extends Listbox<GobIconCategoryList.GobCategory
 	    cfg = new CFG<>("mmap.categories." + category, true);
 	}
 	
-	public GobIcon.SettingsWindow.Icon icon() {
+	public GobIcon.SettingsWindow.ListIcon icon() {
 	    if(icon == null) {
-		Resource.Spec spec = new Resource.Spec(null, resname);
-		Resource res = spec.loadsaved(Resource.local());
-		
-		icon = new GobIcon.SettingsWindow.Icon(new GobIcon.Setting(spec));
+		Resource.Saved spec = new Resource.Saved(Resource.local(), resname, -1);
+		Resource res = spec.get();
+		GobIcon.Icon gicon = new CategoryIcon(null, res);
+		icon = new GobIcon.SettingsWindow.ListIcon(new GobIcon.Setting(spec, new Object[0], gicon, null));
 		Resource.Tooltip name = res.layer(Resource.tooltip);
 		icon.tname = elf.render((name == null) ? "???" : name.t);
 	    }
 	    return icon;
 	}
 	
-	public boolean matches(GobIcon.SettingsWindow.Icon icon) {
+	public boolean matches(GobIcon.SettingsWindow.ListIcon icon) {
 	    return this == ALL || this == categorize(icon);
 	}
 	
-	public static GobCategory categorize(GobIcon.SettingsWindow.Icon icon) {
+	public static GobCategory categorize(GobIcon.SettingsWindow.ListIcon icon) {
 	    return categorize(icon.conf);
 	}
 	
@@ -228,6 +237,14 @@ public class GobIconCategoryList extends Listbox<GobIconCategoryList.GobCategory
 	    }
 	    return GobCategory.OTHER;
 	}
+
+	public static boolean isOre(String res) {
+	    return Arrays.stream(ORE_PATHS).anyMatch(res::contains);
+	}
+
+	public static boolean isRock(String res) {
+	    return Arrays.stream(ROCK_PATHS).anyMatch(res::contains);
+	}
 	
 	public boolean enabled() {
 	    return cfg.get();
@@ -235,6 +252,33 @@ public class GobIconCategoryList extends Listbox<GobIconCategoryList.GobCategory
 	
 	public void toggle() {
 	    cfg.set(!cfg.get());
+	}
+    }
+    
+    public static class CategoryIcon extends GobIcon.Icon {
+	
+	public CategoryIcon(OwnerContext owner, Resource res) {
+	    super(owner, res);
+	}
+	
+	@Override
+	public String name() {
+	    return res.name;
+	}
+	
+	@Override
+	public BufferedImage image() {
+	    return null;
+	}
+	
+	@Override
+	public void draw(GOut g, Coord cc) {
+	    
+	}
+	
+	@Override
+	public boolean checkhit(Coord c) {
+	    return false;
 	}
     }
 }

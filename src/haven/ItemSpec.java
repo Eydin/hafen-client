@@ -29,7 +29,10 @@ package haven;
 import java.util.*;
 import java.awt.image.BufferedImage;
 
-public class ItemSpec implements GSprite.Owner, ItemInfo.SpriteOwner {
+public class ItemSpec implements GSprite.Owner, ItemInfo.SpriteOwner, RandomSource {
+    private static final Object[] definfo = {
+	new Object[] {new ItemInfo.Name.Default()}
+    };
     public final Object[] info;
     public final ResData res;
     public final OwnerContext ctx;
@@ -41,8 +44,6 @@ public class ItemSpec implements GSprite.Owner, ItemInfo.SpriteOwner {
     }
 
     public <T> T context(Class<T> cl) {return(ctx.context(cl));}
-    @Deprecated
-    public Glob glob() {return(context(Glob.class));}
     public Resource getres() {return(res.res.get());}
     private Random rnd = null;
     public Random mkrandoom() {
@@ -71,16 +72,8 @@ public class ItemSpec implements GSprite.Owner, ItemInfo.SpriteOwner {
     public List<ItemInfo> info() {
 	if(cinfo == null) {
 	    Object[] info = this.info;
-	    if(info == null) {
-		/* XXX: This is quite dubious indeed, but it is
-		 * currently necessary. Should DynName be lifted out
-		 * of defn? */
-		info = new Object[] {
-		    new Object[] {
-			res.res.get().pool.load("ui/tt/defn").get(),
-		    },
-		};
-	    }
+	    if(info == null)
+		info = definfo;
 	    cinfo = ItemInfo.buildinfo(this, info);
 	}
 	return(cinfo);

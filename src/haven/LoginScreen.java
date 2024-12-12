@@ -29,16 +29,17 @@ package haven;
 import haven.rx.CharterBook;
 
 import java.util.*;
-import java.awt.event.KeyEvent;
+import java.net.URI;
 import java.io.*;
 
 public class LoginScreen extends Widget {
+    public static final Config.Variable<String> authmech = Config.Variable.prop("haven.authmech", "native");
     public static final Text.Foundry
 	textf = new Text.Foundry(Text.sans, 16).aa(true),
 	textfs = new Text.Foundry(Text.sans, 14).aa(true);
     public static final Tex bg = Resource.loadtex("gfx/loginscr");
     public static final Position bgc = new Position(UI.scale(420, 300));
-    public final Credbox login;
+    public final Widget login;
     public final String hostname;
     private Text error, progress;
     private Button optbtn;
@@ -58,10 +59,21 @@ public class LoginScreen extends Widget {
 	add(new Img(bg), Coord.z);
 	optbtn = adda(new Button(UI.scale(100), "Options"), pos("cbl").add(10, -10), 0, 1);
 	optbtn.setgkey(GameUI.kb_opt);
-	adda(login = new Credbox(), bgc.adds(0, 10), 0.5, 0.0).hide();
-	accounts = add(new AccountList(10));
-	adda(new StatusLabel(hostname, 0.5), bgc.x, bg.sz().y, 0.5, 1);
+	if(HttpStatus.mond.get() != null)
+	    adda(new StatusLabel(HttpStatus.mond.get(), 1.0), sz.x - UI.scale(10), UI.scale(10), 1.0, 0.0);
+	switch(authmech.get()) {
+	case "native":
+	    login = new Credbox();
+	    accounts = add(new AccountList(10));
+	    break;
+	case "steam":
+	    login = new Steambox();
+	    break;
+	default:
+	    throw(new RuntimeException("Unknown authmech: " + authmech.get()));
+	}
 	CharterBook.init();
+	adda(login, bgc.adds(0, 10), 0.5, 0.0).hide();
     }
     
     private void showChangeLog() {
@@ -90,7 +102,7 @@ public class LoginScreen extends Widget {
 	}
 	txt.setprog(0);
     }
-
+    
     public static final KeyBinding kb_savtoken = KeyBinding.get("login/savtoken", KeyMatch.forchar('R', KeyMatch.M));
     public static final KeyBinding kb_deltoken = KeyBinding.get("login/deltoken", KeyMatch.forchar('F', KeyMatch.M));
     public class Credbox extends Widget {
@@ -126,7 +138,7 @@ public class LoginScreen extends Widget {
 		changed();
 	    }
 
-	    public boolean keydown(KeyEvent ev) {
+	    public boolean keydown(KeyDownEvent ev) {
 		if(ConsoleHost.kb_histprev.key().match(ev)) {
 		    if(hpos < history.size() - 1) {
 			if(hpos < 0)
@@ -251,7 +263,7 @@ public class LoginScreen extends Widget {
 	    return(ret);
 	}
 
-	public boolean keydown(KeyEvent ev) {
+	public boolean keydown(KeyDownEvent ev) {
 	    if(key_act.match(ev)) {
 		enter();
 		return(true);
@@ -269,30 +281,79 @@ public class LoginScreen extends Widget {
 	}
     }
 
+    private static boolean steam_autologin = true;
+    public class Steambox extends Widget {
+
+	private Steambox() {
+	    super(UI.scale(200, 150));
+	    Widget prev = adda(new Label("Logging in with Steam", textf), sz.x / 2, 0, 0.5, 0);
+	    adda(new IButton("gfx/hud/buttons/login", "u", "d", "o") {
+		    protected void depress() {ui.sfx(Button.clbtdown.stream());}
+		    protected void unpress() {ui.sfx(Button.clbtup.stream());}
+		    public void click() {enter();}
+		},
+		prev.pos("bl").adds(0, 10).x(sz.x / 2), 0.5, 0.0)
+		.setgkey(key_act);
+	}
+
+	private AuthClient.Credentials creds() throws java.io.IOException {
+	    return(new SteamCreds());
+	}
+
+	private void enter() {
+	    try {
+		LoginScreen.this.wdgmsg("login", creds(), false);
+	    } catch(java.io.IOException e) {
+		error(e.getMessage());
+	    }
+	}
+
+	public void tick(double dt) {
+	    super.tick(dt);
+	    if(steam_autologin) {
+		enter();
+		steam_autologin = false;
+	    }
+	}
+    }
+
     public static class StatusLabel extends Widget {
 	public final HttpStatus stat;
 	public final double ax;
 
-	public StatusLabel(String host, double ax) {
-	    super(new Coord(UI.scale(150), FastText.h * 2));
-	    this.stat = new HttpStatus(host);
+	public StatusLabel(URI svc, double ax) {
+	    super(new Coord(UI.scale(150), Text.std.height() * 2));
+	    this.stat = new HttpStatus(svc);
 	    this.ax = ax;
 	}
 
+	private Text[] lines = new Text[2];
 	public void draw(GOut g) {
 	    int x = (int)Math.round(sz.x * ax);
+	    String[] buf = {null, null};
 	    synchronized(stat) {
-		if(!stat.syn || (stat.status == ""))
-		    return;
-		if(stat.status == "up") {
-		    FastText.aprintf(g, new Coord(x, FastText.h * 0), ax, 0, "Server status: Up");
-		    FastText.aprintf(g, new Coord(x, FastText.h * 1), ax, 0, "Hearthlings playing: %,d", stat.users);
+		if(!stat.syn || (stat.status == "")) {
+		} else if(stat.status == "up") {
+		    buf[0] = "Server status: Up";
+		    buf[1] = String.format("Hearthlings playing: %,d", stat.users);
 		} else if(stat.status == "down") {
-		    FastText.aprintf(g, new Coord(x, FastText.h * 0), ax, 0, "Server status: Down");
+		    buf[0] = "Server status: Down";
 		} else if(stat.status == "shutdown") {
-		    FastText.aprintf(g, new Coord(x, FastText.h * 0), ax, 0, "Server status: Shutting down");
+		    buf[0] = "Server status: Shutting down";
 		} else if(stat.status == "crashed") {
-		    FastText.aprintf(g, new Coord(x, FastText.h * 0), ax, 0, "Server status: Crashed");
+		    buf[0] = "Server status: Crashed";
+		}
+	    }
+	    for(int i = 0, y = 0; i < 2; i++) {
+		if((lines[i] != null) && !Utils.eq(buf[i], lines[i].text)) {
+		    lines[i].dispose();
+		    lines[i] = null;
+		}
+		if(buf[i] != null)
+		    lines[i] = Text.render(buf[i]);
+		if(lines[i] != null) {
+		    g.image(lines[i].tex(), Coord.of((int)((sz.x - lines[i].sz().x) * ax), y));
+		    y += lines[i].sz().y;
 		}
 	    }
 	}
@@ -332,12 +393,13 @@ public class LoginScreen extends Widget {
 
     public void wdgmsg(Widget sender, String msg, Object... args) {
 	if(sender == accounts) {
-	    if("account".equals(msg)) {
+	    if("account".equals(msg) && login instanceof Credbox) {
+		Credbox creds = (Credbox) login;
 		String name = (String) args[0];
 		String token = (String) args[1];
-		login.user.settext2(name);
-		login.token = Utils.hex2byte(token);
-		login.enter();
+		creds.user.settext2(name);
+		creds.token = Utils.hex2byte(token);
+		creds.enter();
 	    }
 	    return;
 	}
@@ -371,11 +433,11 @@ public class LoginScreen extends Widget {
 	if(msg == "login") {
 	    mklogin();
 	} else if(msg == "error") {
-	    error((String)args[0]);
+	    error(L10N.msg((String)args[0]));
 	} else if(msg == "prg") {
 	    error(null);
 	    clear();
-	    progress((String)args[0]);
+	    progress(L10N.msg((String)args[0]));
 	} else {
 	    super.uimsg(msg, args);
 	}

@@ -28,9 +28,13 @@ package haven;
 
 import java.awt.Color;
 import java.awt.Graphics;
+import java.awt.color.*;
 import java.awt.image.*;
 
 public class PUtils {
+    public static final ComponentColorModel cm_rgb = new ComponentColorModel(ColorSpace.getInstance(ColorSpace.CS_sRGB), new int[] {8, 8, 8}, false, false, ComponentColorModel.OPAQUE, java.awt.image.DataBuffer.TYPE_BYTE);
+    public static final ComponentColorModel cm_rgba = new ComponentColorModel(ColorSpace.getInstance(ColorSpace.CS_sRGB), new int[] {8, 8, 8, 8}, true, false, ComponentColorModel.TRANSLUCENT, java.awt.image.DataBuffer.TYPE_BYTE);
+
     public static Coord imgsz(BufferedImage img) {
 	return(new Coord(img.getWidth(), img.getHeight()));
     }
@@ -61,17 +65,17 @@ public class PUtils {
     }
 
     public static BufferedImage copy(BufferedImage src) {
-	return(rasterimg(copy(src.getRaster())));
+	return(new BufferedImage(src.getColorModel(), copy(src.getRaster()), src.isAlphaPremultiplied(), null));
     }
 
     public static BufferedImage rasterimg(WritableRaster img) {
-	return(new BufferedImage(TexI.glcm, img, false, null));
+	return(new BufferedImage(cm_rgba, img, false, null));
     }
 
     public static BufferedImage coercergba(BufferedImage img) {
 	int w = img.getWidth(), h = img.getHeight();
 	WritableRaster buf = Raster.createInterleavedRaster(DataBuffer.TYPE_BYTE, w, h, 4, null);
-	BufferedImage tgt = new BufferedImage(TexI.glcm, buf, false, null);
+	BufferedImage tgt = new BufferedImage(cm_rgba, buf, false, null);
 	Graphics g = tgt.createGraphics();
 	g.drawImage(img, 0, 0, w, h, 0, 0, w, h, null);
 	g.dispose();
@@ -587,7 +591,8 @@ public class PUtils {
             return(convolvedown(img, tsz, filter));
         if((tsz.x >= img.getWidth()) && (tsz.y >= img.getHeight()))
             return(convolveup(img, tsz, filter));
-        throw(new IllegalArgumentException("Can only scale images up or down in both dimensions"));
+        throw(new IllegalArgumentException(String.format("Can only scale images up or down in both dimensions: (%d, %d) -> (%d, %d)",
+							 img.getWidth(), img.getHeight(), tsz.x, tsz.y)));
     }
     public static BufferedImage convolve(BufferedImage img, Coord tsz, Convolution filter) {
 	return(new BufferedImage(img.getColorModel(), convolve(img.getRaster(), tsz, filter), false, null));

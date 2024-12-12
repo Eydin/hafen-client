@@ -19,8 +19,8 @@ public class CharterBook extends WindowX {
     private static List<String> names;
     private static Gson gson;
     
-    public CharterBook(Coord sz, String cap, boolean lg, Coord tlo, Coord rbo) {
-	super(sz, cap, lg, tlo, rbo);
+    public CharterBook(Coord sz, String cap, boolean lg) {
+	super(sz, cap, lg);
 	pack();
     }
     
@@ -77,7 +77,6 @@ public class CharterBook extends WindowX {
 		.setData(names)
 		.setChangedCallback((index, charter) -> {
 		    text.settext(charter);
-		    text.buf.key('\0', KeyEvent.VK_END, 0); //move caret to the end
 		    setfocus(text);
 		});
 	    add(new Button(50, "GO", false, text::activate), child.c.add(child.sz.x + 20, 0));

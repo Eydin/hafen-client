@@ -145,22 +145,22 @@ public class WidgetList<T extends Widget> extends ListWidget<T> {
     }
 
     @Override
-    public boolean mousedown(Coord c, int button) {
-	if(super.mousedown(c, button))
+    public boolean mousedown(MouseDownEvent ev) {
+	if(ev.propagate(this))
 	    return (true);
-	T item = itemat(c);
-	if((item == null) && (button == 1))
+	T item = itemat(ev.c);
+	if((item == null) && (ev.b == 1))
 	    change(null);
 	else if(item != null)
-	    itemclick(item, button);
+	    itemclick(item, ev.b);
 	return (true);
     }
 
     @Override
-    public void mousemove(Coord c) {
-	super.mousemove(c);
-	if(c.isect(Coord.z, sz)) {
-	    over = itemat(c);
+    public void mousemove(MouseMoveEvent ev) {
+	ev.propagate(this);
+	if(ev.c.isect(Coord.z, sz)) {
+	    over = itemat(ev.c);
 	} else {
 	    over = null;
 	}
@@ -174,8 +174,8 @@ public class WidgetList<T extends Widget> extends ListWidget<T> {
     }
     
     @Override
-    public boolean mousewheel(Coord c, int amount) {
-	sb.ch(amount);
+    public boolean mousewheel(MouseWheelEvent ev) {
+	sb.ch(ev.a);
 	return (true);
     }
 }

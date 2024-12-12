@@ -13,6 +13,20 @@ public class Reflect {
 	}
 	return v;
     }
+    
+    public static <T> T getFieldValue(Object obj, String name, Class<T> clazz) {
+	T v = null;
+	try {
+	    Field f = getField(obj, name);
+	    Object t = f.get(obj);
+	    if(t != null && clazz.isAssignableFrom(t.getClass())) {
+		//noinspection unchecked
+		v = (T) t;
+	    }
+	} catch (NoSuchFieldException | IllegalAccessException | ClassCastException ignored) {
+	}
+	return v;
+    }
 
     public static int getFieldValueInt(Object obj, String name) {
 	int v = 0;
@@ -92,6 +106,10 @@ public class Reflect {
 
     public static boolean is(Object obj, String clazz){
 	return obj != null && obj.getClass().getName().equals(clazz);
+    }
+
+    public static boolean like(Object obj, String clazz) {
+	return obj != null && obj.getClass().getName().contains(clazz);
     }
 
     //Note that version with types should be used if arguments contain primitive types

@@ -73,19 +73,19 @@ public class CheckBox extends ACheckBox {
             g.image(mark, Coord.z.add(0, (sz.y - mark.sz().y) / 2));
         super.draw(g);
     }
-    public boolean mousedown(Coord c, int button) {
-	if(hitbox && !c.isect(Coord.z, box.sz())){
+    public boolean mousedown(MouseDownEvent ev) {
+	if(hitbox && !ev.c.isect(Coord.z, box.sz())){
 	    return false;
 	}
-	if(button == 1) {
+	if(ev.b == 1) {
 	    click();
 	    return(true);
 	}
-	return(super.mousedown(c, button));
+	return(super.mousedown(ev));
     }
     
     private String i10n(String text) {
-	return i10n ? L10N.label(text) : text;
+	return i10n() ? L10N.label(text) : text;
     }
     
     public static class Untranslated extends CheckBox {

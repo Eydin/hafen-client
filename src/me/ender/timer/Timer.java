@@ -8,7 +8,6 @@ import haven.TimerPanel;
 import haven.Widget;
 
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 
 public class Timer {
@@ -16,7 +15,8 @@ public class Timer {
     private static final String TIMERS_CFG = "timers.cfg";
     
     private static final Object lock = new Object();
-    private static final List<Timer> timers = load();
+    private static final List<Timer> timers = new ArrayList<>();
+    private static boolean loaded = false;
     
     private static long server;
     private static long local;
@@ -33,15 +33,15 @@ public class Timer {
     transient public long remaining;
     transient public UpdateCallback listener;
     
-    private static List<Timer> load() {
-	List<Timer> timers = null;
+    private static void load() {
+	if(loaded) {return;}
+	loaded = true;
 	try {
 	    Gson gson = new GsonBuilder().create();
-	    timers = gson.fromJson(Config.loadFile(TIMERS_CFG), new TypeToken<List<Timer>>() {
-	    }.getType());
+	    timers.addAll(gson.fromJson(Config.loadFile(TIMERS_CFG), new TypeToken<List<Timer>>() {
+	    }.getType()));
 	} catch (Exception ignored) {
 	}
-	return timers == null ? new LinkedList<>() : timers;
     }
     
     public static void save() {
@@ -52,6 +52,7 @@ public class Timer {
     public static void server(long time) {
 	server = time;
 	local = System.currentTimeMillis();
+	load();
     }
     
     public static void tick(double dt) {

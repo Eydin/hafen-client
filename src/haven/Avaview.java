@@ -54,7 +54,7 @@ public class Avaview extends PView implements DTarget{
 	    boolean inner = false;
 	    String camnm = "avacam";
 	    if(args[0] != null)
-		avagob = Utils.uint32((Integer)args[0]);
+		avagob = Utils.uiv(args[0]);
 	    if((args.length > 1) && (args[1] != null)) {
 		sz = UI.scale((Coord)args[1]);
 		inner = true;
@@ -84,7 +84,7 @@ public class Avaview extends PView implements DTarget{
 	    if(args[0] == null)
 		this.avagob = -1;
 	    else
-		this.avagob = Utils.uint32((Integer)args[0]);
+		this.avagob = Utils.uiv(args[0]);
 	    this.avadesc = null;
 	} else if(msg == "pop") {
 	    pop(Desc.decode(ui.sess, args));
@@ -123,11 +123,10 @@ public class Avaview extends PView implements DTarget{
 	.add(Glob.class, v -> v.ui.sess.glob)
 	.add(Session.class, v -> v.ui.sess)
 	.add(Resource.Resolver.class, v -> (v.resmap == null ? v.ui.sess : v.resmap));
-    private class AvaOwner implements Sprite.Owner, Skeleton.ModOwner {
+    private class AvaOwner implements Sprite.Owner, Skeleton.ModOwner, RandomSource {
 	public Random mkrandoom() {return(new Random());}
-	public Resource getres() {return(null);}
 	public <T> T context(Class<T> cl) {return(ctxr.context(cl, Avaview.this));}
-	@Deprecated public Glob glob() {return(context(Glob.class));}
+	@Deprecated public Resource getres() {return(null);}
 
 	public Collection<Location.Chain> getloc() {return(Collections.emptyList());}
 	public double getv() {return(0);}
@@ -274,12 +273,11 @@ public class Avaview extends PView implements DTarget{
 	}
     }
 
-    public boolean mousedown(Coord c, int button) {
-	if(canactivate) {
-	    wdgmsg("click", button);
-	    return(true);
-	}
-	return(super.mousedown(c, button));
+    public boolean mousedown(MouseDownEvent ev) {
+	if(!canactivate)
+	    return(super.mousedown(ev));
+	wdgmsg("click", ev.b);
+	return(true);
     }
     
     @Override

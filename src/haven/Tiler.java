@@ -185,7 +185,7 @@ public abstract class Tiler {
 
     public static void flatmodel(MapMesh m, Coord lc) {
 	MapMesh.MapSurface s = m.data(m.gnd);
-	if(s.split[s.ts.o(lc)]) {
+	if(s.split[s.bs.o(lc)]) {
 	    s.new Face(s.surf[s.vs.o(lc.x, lc.y)],
 		       s.surf[s.vs.o(lc.x, lc.y + 1)],
 		       s.surf[s.vs.o(lc.x + 1, lc.y + 1)]);
@@ -208,7 +208,7 @@ public abstract class Tiler {
 
     public void lay(MapMesh m, Coord lc, Coord gc, MCons cons, boolean cover) {
 	MapMesh.MapSurface s = m.data(m.gnd);
-	cons.faces(m, MPart.splitquad(lc, gc, s.fortilea(lc), s.split[s.ts.o(lc)]));
+	cons.faces(m, MPart.splitquad(lc, gc, s.fortilea(lc), s.split[s.bs.o(lc)]));
     }
 
     public abstract void lay(MapMesh m, Random rnd, Coord lc, Coord gc);
@@ -261,15 +261,10 @@ public abstract class Tiler {
 
     private static final Map<String, Factory> rnames = new TreeMap<String, Factory>();
     static {
-	java.security.AccessController.doPrivileged(new java.security.PrivilegedAction<Object>() {
-		public Object run() {
-		    for(Class<?> cl : dolda.jglob.Loader.get(ResName.class).classes()) {
-			String nm = cl.getAnnotation(ResName.class).value();
-			rnames.put(nm, Utils.construct(cl.asSubclass(Factory.class)));
-		    }
-		    return(null);
-		}
-	    });
+	for(Class<?> cl : dolda.jglob.Loader.get(ResName.class).classes()) {
+	    String nm = cl.getAnnotation(ResName.class).value();
+	    rnames.put(nm, Utils.construct(cl.asSubclass(Factory.class)));
+	}
     }
 
     public static Factory byname(String name) {

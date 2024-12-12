@@ -26,8 +26,6 @@
 
 package haven;
 
-import java.awt.event.KeyEvent;
-
 public class Speedget extends Widget {
     private static final CFG<Integer> SPEED = new CFG<>("general.speed", 1);
     public static final Tex imgs[][];
@@ -55,8 +53,8 @@ public class Speedget extends Widget {
     @RName("speedget")
     public static class $_ implements Factory {
 	public Widget create(UI ui, Object[] args) {
-	    int cur = (Integer)args[0];
-	    int max = (Integer)args[1];
+	    int cur = Utils.iv(args[0]);
+	    int max = Utils.iv(args[1]);
 	    return(new Speedget(cur, max));
 	}
     }
@@ -90,20 +88,20 @@ public class Speedget extends Widget {
 
     public void uimsg(String msg, Object... args) {
 	if(msg == "cur")
-	    cur = (Integer)args[0];
+	    cur = Utils.iv(args[0]);
 	else if(msg == "max")
-	    max = (Integer)args[0];
+	    max = Utils.iv(args[0]);
     }
 
     public void set(int s) {
 	wdgmsg("set", s);
     }
 
-    public boolean mousedown(Coord c, int button) {
+    public boolean mousedown(MouseDownEvent ev) {
 	int x = 0;
 	for(int i = 0; i < 4; i++) {
 	    x += imgs[i][0].sz().x;
-	    if(c.x < x) {
+	    if(ev.c.x < x) {
 		set(i);
 		break;
 	    }
@@ -111,9 +109,9 @@ public class Speedget extends Widget {
 	return(true);
     }
 
-    public boolean mousewheel(Coord c, int amount) {
+    public boolean mousewheel(MouseWheelEvent ev) {
 	if(max >= 0)
-	    set(Utils.clip(cur + amount, 0, max));
+	    set(Utils.clip(cur + ev.a, 0, max));
 	return(true);
     }
 
@@ -131,7 +129,7 @@ public class Speedget extends Widget {
 	KeyBinding.get("speed-set/2", KeyMatch.nil),
 	KeyBinding.get("speed-set/3", KeyMatch.nil),
     };
-    public boolean globtype(char key, KeyEvent ev) {
+    public boolean globtype(GlobKeyEvent ev) {
 	int dir = 0;
 	if(kb_speedup.key().match(ev))
 	    dir = 1;
@@ -149,7 +147,7 @@ public class Speedget extends Widget {
 		return(true);
 	    }
 	}
-	return(super.globtype(key, ev));
+	return(super.globtype(ev));
     }
     
     public static class SpeedSelector extends Dropbox<Integer> {

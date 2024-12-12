@@ -1,0 +1,290 @@
+{
+  "gfx/invobjs/alabaster": {
+    "effects": [
+      "buff:gfx/hud/chr/ranged",
+      "heal:paginae/wound/asphyxiation"
+    ]
+  },
+  "gfx/invobjs/arkose": {
+    "effects": [
+      "buff:gfx/hud/chr/csm"
+    ]
+  },
+  "gfx/invobjs/basalt": {
+    "effects": [
+      "buff:gfx/hud/chr/ranged",
+      "buff:gfx/hud/chr/unarmed"
+    ]
+  },
+  "gfx/invobjs/catgold": {
+    "effects": [
+      "heal:paginae/wound/beesting",
+      "heal:paginae/wound/pipewheeze",
+      "heal:paginae/wound/soresnout",
+      "heal:paginae/wound/unfaced"
+    ]
+  },
+  "gfx/invobjs/chalcopyrite": {
+    "effects": [
+      "buff:gfx/hud/chr/con",
+      "buff:gfx/hud/chr/psy"
+    ]
+  },
+  "gfx/invobjs/diorite": {
+    "effects": [
+      "buff:gfx/hud/chr/carpentry",
+      "buff:gfx/hud/chr/explore",
+      "heal:paginae/wound/asphyxiation"
+    ]
+  },
+  "gfx/invobjs/dolomite": {
+    "effects": [
+      "buff:gfx/hud/chr/carpentry:bcd",
+      "buff:gfx/hud/chr/cooking:bcd",
+      "buff:gfx/hud/chr/lore:bcd",
+      "heal:paginae/wound/sealfinger:a"
+    ]
+  },
+  "gfx/invobjs/eclogite": {
+    "effects": [
+      "buff:gfx/hud/chr/int",
+      "time:more"
+    ]
+  },
+  "gfx/invobjs/feldspar": {
+    "effects": [
+      "buff:gfx/hud/chr/farming"
+    ]
+  },
+  "gfx/invobjs/finebonering": {
+    "effects": [
+      "buff:gfx/hud/chr/agi:0",
+      "buff:gfx/hud/chr/str:0"
+    ]
+  },
+  "gfx/invobjs/flint": {
+    "effects": [
+      "buff:gfx/hud/chr/csm",
+      "buff:gfx/hud/chr/ranged",
+      "buff:gfx/hud/chr/wil",
+      "heal:paginae/wound/punchsore"
+    ]
+  },
+  "gfx/invobjs/greenschist": {
+    "effects": [
+      "buff:gfx/hud/chr/agi",
+      "buff:gfx/hud/chr/melee",
+      "buff:gfx/hud/chr/unarmed"
+    ]
+  },
+  "gfx/invobjs/herbs/baybolete": {
+    "effects": [
+      "heal:paginae/wound/crabcaressed"
+    ]
+  },
+  "gfx/invobjs/herbs/bloodstern": {
+    "effects": [
+      "buff:gfx/hud/chr/cooking",
+      "buff:gfx/hud/chr/lore",
+      "time:less"
+    ]
+  },
+  "gfx/invobjs/herbs/blueberry": {
+    "effects": [
+      "heal:paginae/wound/hearthburn"
+    ]
+  },
+  "gfx/invobjs/herbs/cattailfibre": {
+    "effects": [
+      "buff:gfx/hud/chr/csm",
+      "heal:paginae/wound/pipewheeze",
+      "heal:paginae/wound/sealfinger"
+    ]
+  },
+  "gfx/invobjs/herbs/cattailhead": {
+    "effects": [
+      "buff:gfx/hud/chr/int",
+      "heal:paginae/wound/crabcaressed",
+      "heal:paginae/wound/hearthburn",
+      "time:more"
+    ]
+  },
+  "gfx/invobjs/herbs/cattailroots": {
+    "effects": [
+      "buff:gfx/hud/chr/psy",
+      "heal:paginae/wound/maddeningrash"
+    ]
+  },
+  "gfx/invobjs/herbs/cavebulb": {
+    "effects": [
+      "heal:paginae/wound/nastylaceration"
+    ]
+  },
+  "gfx/invobjs/herbs/chantrelle": {
+    "effects": [
+      "buff:gfx/hud/chr/con",
+      "buff:gfx/hud/chr/melee",
+      "buff:gfx/hud/chr/unarmed",
+      "heal:paginae/wound/nettleburn"
+    ]
+  },
+  "gfx/invobjs/herbs/clover": {
+    "effects": [
+      "buff:gfx/hud/chr/farming",
+      "heal:paginae/wound/nastylaceration",
+      "heal:paginae/wound/nettleburn"
+    ]
+  },
+  "gfx/invobjs/herbs/dandelion": {
+    "effects": [
+      "buff:gfx/hud/chr/psy",
+      "buff:gfx/hud/chr/wil",
+      "heal:paginae/wound/maddeningrash",
+      "heal:paginae/wound/unfaced"
+    ]
+  },
+  "gfx/invobjs/herbs/giantpuffball": {
+    "effects": [
+      "buff:gfx/hud/chr/wil"
+    ]
+  },
+  "gfx/invobjs/herbs/lampstalk": {
+    "effects": [
+      "buff:gfx/hud/chr/dex"
+    ]
+  },
+  "gfx/invobjs/herbs/libertycap": {
+    "effects": [
+      "heal:paginae/wound/punchsore"
+    ]
+  },
+  "gfx/invobjs/herbs/lingon": {
+    "effects": [
+      "buff:gfx/hud/chr/con",
+      "time:more"
+    ]
+  },
+  "gfx/invobjs/herbs/oystermushroom": {
+    "effects": [
+      "buff:gfx/hud/chr/csm",
+      "buff:gfx/hud/chr/int",
+      "heal:paginae/wound/nosebleed"
+    ]
+  },
+  "gfx/invobjs/herbs/rustroot": {
+    "effects": [
+      "buff:gfx/hud/chr/masonry"
+    ]
+  },
+  "gfx/invobjs/herbs/snapdragon": {
+    "effects": [
+      "buff:gfx/hud/chr/psy"
+    ]
+  },
+  "gfx/invobjs/herbs/spindlytaproot": {
+    "effects": [
+      "buff:gfx/hud/chr/agi",
+      "buff:gfx/hud/chr/con",
+      "buff:gfx/hud/chr/unarmed"
+    ]
+  },
+  "gfx/invobjs/herbs/stingingnettle": {
+    "effects": [
+      "buff:gfx/hud/chr/int",
+      "heal:paginae/wound/nosebleed"
+    ]
+  },
+  "gfx/invobjs/herbs/tansy": {
+    "effects": [
+      "buff:gfx/hud/chr/carpentry"
+    ]
+  },
+  "gfx/invobjs/herbs/windweed": {
+    "effects": [
+      "buff:gfx/hud/chr/masonry",
+      "buff:gfx/hud/chr/psy"
+    ]
+  },
+  "gfx/invobjs/herbs/yarrow": {
+    "effects": [
+      "heal:paginae/wound/beesting",
+      "heal:paginae/wound/punchsore"
+    ]
+  },
+  "gfx/invobjs/herbs/yellowfoot": {
+    "effects": [
+      "buff:gfx/hud/chr/explore",
+      "heal:paginae/wound/allergicreaction"
+    ]
+  },
+  "gfx/invobjs/jasper": {
+    "effects": [
+      "buff:gfx/hud/chr/int",
+      "heal:paginae/wound/crabcaressed"
+    ]
+  },
+  "gfx/invobjs/kyanite": {
+    "effects": [
+      "buff:gfx/hud/chr/con",
+      "buff:gfx/hud/chr/farming"
+    ]
+  },
+  "gfx/invobjs/leadtalisman": {
+    "effects": [
+      "buff:gfx/hud/chr/psy:0",
+      "buff:gfx/hud/chr/str:0"
+    ]
+  },
+  "gfx/invobjs/limestone": {
+    "effects": [
+      "heal:paginae/wound/nettleburn:bcd",
+      "time:less"
+    ]
+  },
+  "gfx/invobjs/nettleshirt": {
+    "effects": [
+      "buff:gfx/hud/chr/agi:0"
+    ]
+  },
+  "gfx/invobjs/orthoclase": {
+    "effects": [
+      "buff:gfx/hud/chr/unarmed",
+      "heal:paginae/wound/crabcaressed"
+    ]
+  },
+  "gfx/invobjs/pegmatite": {
+    "effects": [
+      "buff:gfx/hud/chr/survive",
+      "heal:paginae/wound/soresnout"
+    ]
+  },
+  "gfx/invobjs/pumice": {
+    "effects": [
+      "buff:gfx/hud/chr/melee",
+      "heal:paginae/wound/nettleburn"
+    ]
+  },
+  "gfx/invobjs/quartz": {
+    "effects": [
+      "buff:gfx/hud/chr/con",
+      "buff:gfx/hud/chr/survive"
+    ]
+  },
+  "gfx/invobjs/raiderscap": {
+    "effects": [
+      "buff:gfx/hud/chr/str:0"
+    ]
+  },
+  "gfx/invobjs/serpentine": {
+    "effects": [
+      "buff:gfx/hud/chr/agi",
+      "buff:gfx/hud/chr/carpentry",
+      "buff:gfx/hud/chr/dex"
+    ]
+  },
+  "gfx/invobjs/zincspar": {
+    "effects": [
+      "buff:gfx/hud/chr/csm"
+    ]
+  }
+}

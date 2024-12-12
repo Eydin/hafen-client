@@ -50,6 +50,8 @@ public class Composer {
         hpad = value;
         return this;
     }
+    
+    public int hpad() {return hpad;}
 
     public Composer vpad(int value) {
         vpad = value;
@@ -62,6 +64,11 @@ public class Composer {
 
     public int y() {
         return y;
+    }
+    
+    public Composer y(int v) {
+        this.y = v;
+        return this;
     }
 
     public void add(int height) {
@@ -94,6 +101,20 @@ public class Composer {
         int x = hpad;
         for (Widget child : children) {
             wdg.add(child, new Coord(x, vpad + y + (maxh - child.sz.y) / 2));
+            x += child.sz.x + hmrgn;
+        }
+        y += maxh + vmrgn;
+    }
+    
+    /**Same as addr but does not center children vertically*/
+    public void addr2(Widget ... children) {
+        int maxh = 0;
+        for (Widget child : children) {
+            maxh = Math.max(maxh, child.sz.y);
+        }
+        int x = hpad;
+        for (Widget child : children) {
+            wdg.add(child, new Coord(x, vpad + y));
             x += child.sz.x + hmrgn;
         }
         y += maxh + vmrgn;

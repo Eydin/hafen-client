@@ -1,0 +1,3 @@
+#PAGINA LAYER
+#String text
+Will try to aggro (or switch target to) one non-player target closest to cursor. Ignores horses that have you or your party as riders.

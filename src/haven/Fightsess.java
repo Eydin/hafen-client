@@ -29,14 +29,14 @@ package haven;
 import haven.rx.Reactor;
 
 import haven.render.*;
+import me.ender.FakeDraggerWdg;
 
 import java.awt.*;
 import java.util.*;
-import java.awt.event.InputEvent;
+import java.awt.Color;
 import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Map;
 
 import static haven.KeyBinder.*;
 
@@ -70,6 +70,8 @@ public class Fightsess extends Widget {
     public Coord pcc;
     public int pho;
     private Fightview fv;
+    private static final String DRAGGER = "Fightsess:drag";
+    private FakeDraggerWdg dragger = new FakeDraggerWdg(DRAGGER, CFG.DRAG_COMBAT_UI);
 
     public static class Action {
 	public final Indir<Resource> res;
@@ -83,7 +85,7 @@ public class Fightsess extends Widget {
     @RName("fsess")
     public static class $_ implements Factory {
 	public Widget create(UI ui, Object[] args) {
-	    int nact = (Integer)args[0];
+	    int nact = Utils.iv(args[0]);
 	    return(new Fightsess(nact));
 	}
     }
@@ -97,9 +99,26 @@ public class Fightsess extends Widget {
     protected void added() {
 	fv = parent.getparent(GameUI.class).fv;
 	presize();
-	ui.gui.calendar.hide();
+	Cal calendar = ui.gui.calendar;
+	calendar.hide();
+	dragger.sz = cdframe.sz();
+	parent.add(dragger, Coord.z);
     }
-
+    
+    @Override
+    public void remove() {
+	dragger.remove();
+	super.remove();
+    }
+    
+    public static void resetOffset(UI ui) {
+	if(ui == null || ui.gui == null || ui.gui.fsess == null) {
+	    WidgetCfg.reset(DRAGGER);
+	} else {
+	    ui.gui.fsess.dragger.reset();
+	}
+    }
+    
     public void presize() {
 	resize(parent.sz);
 	pcc = sz.div(2);
@@ -191,14 +210,8 @@ public class Fightsess extends Widget {
     }
 
     private static final Text.Furnace ipf = new PUtils.BlurFurn(new Text.Foundry(Text.serif, 18, new Color(128, 128, 255)).aa(true), 1, 1, new Color(48, 48, 96));
-    private final Text.UText<?> ip = new Text.UText<Integer>(ipf) {
-	public String text(Integer v) {return(CFG.ALT_COMBAT_UI.get()?v.toString():"IP: " + v);}
-	public Integer value() {return(fv.current.ip);}
-    };
-    private final Text.UText<?> oip = new Text.UText<Integer>(ipf) {
-	public String text(Integer v) {return(CFG.ALT_COMBAT_UI.get()?v.toString():"IP: " + v);}
-	public Integer value() {return(fv.current.oip);}
-    };
+    private final Indir<Text> ip = Utils.transform(() -> fv.current.ip, v -> ipf.render((CFG.ALT_COMBAT_UI.get() ? "" : "IP: ") + v));
+    private final Indir<Text> oip = Utils.transform(() -> fv.current.oip, v -> ipf.render((CFG.ALT_COMBAT_UI.get() ? "" : "IP: ") + v));
 
     private static Coord actc(int i) {
 	int rl = 5;
@@ -214,8 +227,12 @@ public class Fightsess extends Widget {
     public void draw(GOut g) {
 	updatepos();
         boolean altui = CFG.ALT_COMBAT_UI.get();
-	int x0 = ui.gui.calendar.rootpos().x + ui.gui.calendar.sz.x / 2;
-	int y0 = ui.gui.calendar.rootpos().y + ui.gui.calendar.sz.y / 2;
+	Coord c0 = ui.gui.calendar.rootpos().add(ui.gui.calendar.sz.div(2));
+	dragger.origin(c0.sub(dragger.sz.div(2)));
+	int xa = c0.x;
+	c0 = dragger.c.add(dragger.sz.div(2));
+	int x0 = c0.x;
+	int y0 = c0.y;
 	int bottom = ui.gui.beltwdg.c.y - 40;
 	double now = Utils.rtime();
 
@@ -237,8 +254,9 @@ public class Fightsess extends Widget {
 	    if(now < fv.atkct) {
 		double a = (now - fv.atkcs) / (fv.atkct - fv.atkcs);
 		g.chcolor(255, 0, 128, 224);
-		g.fellipse(cdc, UI.scale(altui ? new Coord(24, 24) : new Coord(22, 22)), Math.PI / 2 - (Math.PI * 2 * Math.min(1.0 - a, 1.0)), Math.PI / 2);
+		g.fellipse(cdc, UI.scale(altui ? UI.scale(24, 24) : UI.scale(22, 22)), Math.PI / 2 - (Math.PI * 2 * Math.min(1.0 - a, 1.0)), Math.PI / 2);
 		g.chcolor();
+		FastText.aprintf(g, cdc, 0.5, 0.5, "%.1f", fv.atkct - now);
 	    }
 	    g.image(cdframe, altui ? new Coord(x0, y0).sub(cdframe.sz().div(2)) : cdc.sub(cdframe.sz().div(2)));
 	}
@@ -289,7 +307,7 @@ public class Fightsess extends Widget {
 	    }
 	}
 	for(int i = 0; i < actions.length; i++) {
-	    Coord ca = altui ? new Coord(x0 - 18, bottom - 150).add(actc(i)) : pcc.add(actc(i));
+	    Coord ca = altui ? new Coord(xa - 18, bottom - 150).add(actc(i)) : pcc.add(actc(i));
 	    Action act = actions[i];
 	    try {
 		if(act != null) {
@@ -370,20 +388,18 @@ public class Fightsess extends Widget {
 	for(int i = 0; i < actions.length; i++) {
 	    Coord ca = altui ? new Coord(x0 - 18, bottom - 150).add(actc(i)).add(16, 16) : pcc.add(actc(i));
 	    Indir<Resource> act = (actions[i] == null) ? null : actions[i].res;
-	    try {
-		if(act != null) {
-		    Tex img = act.get().flayer(Resource.imgc).tex();
-		    ca = ca.sub(img.sz().div(2));
-		    if(c.isect(ca, img.sz())) {
-			String tip = act.get().flayer(Resource.tooltip).t + " ($b{$col[255,128,0]{" + keybinds[i].shortcut(true) + "}})";
-			if((acttip == null) || !acttip.text.equals(tip))
-			    acttip = RichText.render(tip, -1);
-			return(acttip);
-		    }
+	    if(act != null) {
+		Tex img = act.get().flayer(Resource.imgc).tex();
+		ca = ca.sub(img.sz().div(2));
+		if(c.isect(ca, img.sz())) {
+		    String tip = act.get().flayer(Resource.tooltip).t + " ($b{$col[255,128,0]{" + keybinds[i].shortcut(true) + "}})";
+		    if((acttip == null) || !acttip.text.equals(tip))
+			acttip = RichText.render(tip, -1);
+		    return(acttip);
 		}
-	    } catch(Loading l) {}
+	    }
 	}
-	try {
+	{
 	    Indir<Resource> lastact = this.lastact1;
 	    if(lastact != null) {
 		Coord usesz = lastact.get().flayer(Resource.imgc).sz;
@@ -394,8 +410,8 @@ public class Fightsess extends Widget {
 		    return(lastacttip1);
 		}
 	    }
-	} catch(Loading l) {}
-	try {
+	}
+	{
 	    Indir<Resource> lastact = this.lastact2;
 	    if(lastact != null) {
 		Coord usesz = lastact.get().flayer(Resource.imgc).sz;
@@ -406,27 +422,27 @@ public class Fightsess extends Widget {
 		    return(lastacttip2);
 		}
 	    }
-	} catch(Loading l) {}
+	}
 	return(null);
     }
 
     public void uimsg(String msg, Object... args) {
 	if(msg == "act") {
-	    int n = (Integer)args[0];
+	    int n = Utils.iv(args[0]);
 	    if(args.length > 1) {
-		Indir<Resource> res = ui.sess.getres((Integer)args[1]);
+		Indir<Resource> res = ui.sess.getresv(args[1]);
 		actions[n] = new Action(res);
 	    } else {
 		actions[n] = null;
 	    }
 	} else if(msg == "acool") {
-	    int n = (Integer)args[0];
+	    int n = Utils.iv(args[0]);
 	    double now = Utils.rtime();
 	    actions[n].cs = now;
-	    actions[n].ct = now + (((Number)args[1]).doubleValue() * 0.06);
+	    actions[n].ct = now + (Utils.dv(args[1]) * 0.06);
 	} else if(msg == "use") {
-	    this.use = (Integer)args[0];
-	    this.useb = (args.length > 1) ? ((Integer)args[1]) : -1;
+	    this.use = Utils.iv(args[0]);
+	    this.useb = (args.length > 1) ? Utils.iv(args[1]) : -1;
 	} else if(msg == "used") {
 	} else {
 	    super.uimsg(msg, args);
@@ -468,8 +484,8 @@ public class Fightsess extends Widget {
 
     private UI.Grab holdgrab = null;
     private int held = -1;
-    public boolean globtype(char key, KeyEvent ev) {
-//	if((ev.getModifiersEx() & (InputEvent.CTRL_DOWN_MASK | KeyEvent.META_DOWN_MASK | KeyEvent.ALT_DOWN_MASK)) == 0) 
+    public boolean globtype(GlobKeyEvent ev) {
+	// ev = new KeyEvent((java.awt.Component)ev.getSource(), ev.getID(), ev.getWhen(), ev.getModifiersEx(), ev.getKeyCode(), ev.getKeyChar(), ev.getKeyLocation());
 	{
 	    int fn = getAction(ev);
 	    if((fn >= 0) && (fn < actions.length)) {
@@ -496,8 +512,8 @@ public class Fightsess extends Widget {
 		return(true);
 	    }
 	}
-	if(kb_relcycle.key().match(ev, KeyMatch.S)) {
-	    if((ev.getModifiersEx() & KeyEvent.SHIFT_DOWN_MASK) == 0) {
+	if(kb_relcycle.key().match(ev.awt, KeyMatch.S)) {
+	    if((ev.mods & KeyMatch.S) == 0) {
 		Fightview.Relation cur = fv.current;
 		if(cur != null) {
 		    fv.lsrel.remove(cur);
@@ -513,16 +529,15 @@ public class Fightsess extends Widget {
 	    fv.wdgmsg("bump", (int)fv.lsrel.get(0).gobid);
 	    return(true);
 	}
-	return(super.globtype(key, ev));
+	return(super.globtype(ev));
     }
 
-    public boolean keydown(KeyEvent ev) {
+    public boolean keydown(KeyDownEvent ev) {
 	return(false);
     }
 
-    public boolean keyup(KeyEvent ev) {
-//	if((holdgrab != null) && (kb_acts[held].key().match(ev, KeyMatch.MODS))) {
-	if((holdgrab != null) && (keybinds[held].match(ev))) {
+    public boolean keyup(KeyUpEvent ev) {
+	if(ev.grabbed && (keybinds[held].match(ev, KeyBinder.MODS))) {
 	    MapView map = getparent(GameUI.class).map;
 	    new Release(held);
 	    holdgrab.remove();
@@ -533,7 +548,7 @@ public class Fightsess extends Widget {
 	return(false);
     }
     
-    private int getAction(KeyEvent ev) {
+    private int getAction(GlobKeyEvent ev) {
 	for (int i = 0; i < actions.length && i < keybinds.length; i++) {
 	    if(keybinds[i].match(ev)) {
 		return i;

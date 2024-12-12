@@ -131,8 +131,8 @@ public class AccountList extends Widget {
 	super.draw(g);
     }
 
-    public boolean mousewheel(Coord c, int amount) {
-	scroll(amount);
+    public boolean mousewheel(MouseWheelEvent ev) {
+	scroll(ev.a);
 	return (true);
     }
 

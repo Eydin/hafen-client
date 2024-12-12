@@ -175,17 +175,7 @@ public class Material implements Pipe.Op {
 
     @Resource.PublishedCode(name = "mat")
     public static interface Factory {
-	public default Material create(Owner owner, Resource res, Message sdt) {
-	    try {
-		return(create(owner.context(Glob.class), res, sdt));
-	    } catch(OwnerContext.NoContext e) {
-		return(create((Glob)null, res, sdt));
-	    }
-	}
-	@Deprecated
-	public default Material create(Glob glob, Resource res, Message sdt) {
-	    throw(new AbstractMethodError("material factory missing either create method"));
-	}
+	public Material create(Owner owner, Resource res, Message sdt);
     }
 
     public static Material fromres(Owner owner, Resource res, Message sdt) {
@@ -207,10 +197,6 @@ public class Material implements Pipe.Op {
 	    .add(Glob.class, o -> o.glob)
 	    .add(Session.class, o -> o.glob.sess);
 	public <T> T context(Class<T> cl) {return(ctxr.context(cl, this));}
-    }
-    @Deprecated
-    public static Material fromres(Glob glob, Resource res, Message sdt) {
-	return(fromres(new LegacyOwner(glob), res, sdt));
     }
 
     public static class Res extends Resource.Layer implements Resource.IDLayer<Integer> {
@@ -259,11 +245,11 @@ public class Material implements Pipe.Op {
 	    final Indir<Resource> lres;
 	    final int id;
 	    if(args[0] instanceof String) {
-		lres = res.pool.load((String)args[0], (Integer)args[1]);
-		id = (args.length > 2)?(Integer)args[2]:-1;
+		lres = res.pool.load((String)args[0], Utils.iv(args[1]));
+		id = (args.length > 2) ? Utils.iv(args[2]) : -1;
 	    } else {
 		lres = res.indir();
-		id = (Integer)args[0];
+		id = Utils.iv(args[0]);
 	    }
 	    return(new Res.Resolver() {
 		    public void resolve(Collection<Pipe.Op> buf, Collection<Pipe.Op> dynbuf) {
@@ -355,12 +341,8 @@ public class Material implements Pipe.Op {
 	    Res ret = new Res(res, id);
 	    while(!buf.eom()) {
 		String nm = buf.string();
-		Object[] args = buf.list();
+		Object[] args = buf.list(new Resource.PoolMapper(res.pool));
 		ResCons2 cons = rnames.get(nm);
-		/* XXXRENDER
-		if(cons == null)
-		    throw(new Resource.LoadException("Unknown material part name: " + nm, res));
-		*/
 		if(cons != null)
 		    ret.left.add(cons.cons(res, args));
 		else

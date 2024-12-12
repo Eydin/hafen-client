@@ -1,5 +1,7 @@
 package haven;
 
+import haven.res.ui.tt.attrmod.AttrMod;
+
 import java.awt.image.BufferedImage;
 import java.util.*;
 import java.util.Map.Entry;
@@ -33,8 +35,8 @@ public class AttrBonusesWdg extends Widget implements ItemInfo.Owner {
     }
 
     @Override
-    public boolean mousewheel(Coord c, int amount) {
-	bar.ch(15 * amount);
+    public boolean mousewheel(MouseWheelEvent ev) {
+	bar.ch(15 * ev.a);
 	return true;
     }
 
@@ -49,6 +51,17 @@ public class AttrBonusesWdg extends Widget implements ItemInfo.Owner {
     
     @Override
     public void draw(GOut g) {
+	checkAttributes();
+	if(needUpdate) {
+	    doUpdate();
+	}
+	if(charWnd == null) {
+	    charWnd = ui.gui.chrwdg;
+	    if(charWnd != null) {needBuild = true;}
+	}
+	if(needBuild) {
+	    build();
+	}
 	if(needRedraw) {
 	    render();
 	}
@@ -79,22 +92,6 @@ public class AttrBonusesWdg extends Widget implements ItemInfo.Owner {
 	    needRedraw = false;
 	} catch (Loading ignored) {}
     }
-
-    @Override
-    public void tick(double dt) {
-	super.tick(dt);
-	checkAttributes();
-	if(needUpdate) {
-	    doUpdate();
-	}
-	if(charWnd == null) {
-	    charWnd = ui.gui.chrwdg;
-	    if(charWnd != null) {needBuild = true;}
-	}
-	if(needBuild) {
-	    build();
-	}
-    }
     
     private void checkAttributes() {
 	long tseq = ui.sess.glob.attrseq;
@@ -118,13 +115,6 @@ public class AttrBonusesWdg extends Widget implements ItemInfo.Owner {
 		.flatMap(Collection::stream)
 		.collect(Collectors.toList());
 	    
-	    int miningStrength = 0;
-	    for (Entry<Resource, Integer> e : tmp) {
-		if(e.getKey() == mining) {
-		    miningStrength = Math.max(miningStrength, e.getValue());
-		}
-	    }
-	    
 	    bonuses = tmp.stream()
 		.filter(e -> e.getKey() != mining)
 		.collect(
@@ -136,6 +126,13 @@ public class AttrBonusesWdg extends Widget implements ItemInfo.Owner {
 		);
 	    
 	    if(isMe) {
+		int miningStrength = 0;
+		for (Entry<Resource, Integer> e : tmp) {
+		    int value;
+		    if(e.getKey() == mining && miningStrength < (value = e.getValue())) {
+			miningStrength = value;
+		    }
+		}
 		if(miningStrength > 0) {
 		    bonuses.put(mining, miningStrength);
 		}
@@ -180,20 +177,14 @@ public class AttrBonusesWdg extends Widget implements ItemInfo.Owner {
 	} catch (Loading ignored) {}
     }
 
-    private ItemInfo make(Collection<Entry<Resource, Integer>> mods) {
-	if(mods.isEmpty()) {
+    private ItemInfo make(Collection<Entry<Resource, Integer>> values) {
+	if(values.isEmpty()) {
 	    return null;
 	}
-	Resource res = Resource.remote().load("ui/tt/attrmod").get();
-	ItemInfo.InfoFactory f = res.layer(Resource.CodeEntry.class).get(ItemInfo.InfoFactory.class);
-	Object[] args = new Object[mods.size() * 2 + 1];
-	int i = 1;
-	for (Entry<Resource, Integer> entry : mods) {
-	    args[i] = ui.sess.getresid(entry.getKey());
-	    args[i + 1] = entry.getValue();
-	    i += 2;
-	}
-	return f.build(this, null, args);
+	
+	return new AttrMod(this, values.stream()
+	    .map(m -> new AttrMod.Mod(m.getKey(), m.getValue()))
+	    .collect(Collectors.toList()));
     }
 
     private int BY_PRIORITY(Entry<Resource, Integer> o1, Entry<Resource, Integer> o2) {

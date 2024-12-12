@@ -17,6 +17,8 @@ public class DraggableWidget extends Widget {
 	if(!draggable) {stop_dragging();}
     }
     
+    public boolean draggable() {return draggable;}
+    
     private void stop_dragging() {
 	if(dm != null) {
 	    dm.remove();
@@ -26,15 +28,15 @@ public class DraggableWidget extends Widget {
     }
     
     @Override
-    public boolean mousedown(Coord c, int button) {
-	if(super.mousedown(c, button)) {
+    public boolean mousedown(MouseDownEvent ev) {
+	if(ev.propagate(this)) {
 	    parent.setfocus(this);
 	    return true;
 	}
-	if(c.isect(Coord.z, sz) && draggable) {
-	    if(button == 1) {
+	if(checkhit(ev.c) && draggable) {
+	    if(ev.b == 1) {
 		dm = ui.grabmouse(this);
-		doff = c;
+		doff = ev.c;
 	    }
 	    parent.setfocus(this);
 	    return true;
@@ -43,21 +45,21 @@ public class DraggableWidget extends Widget {
     }
     
     @Override
-    public boolean mouseup(Coord c, int button) {
+    public boolean mouseup(MouseUpEvent ev) {
 	if(dm != null) {
 	    stop_dragging();
 	} else {
-	    super.mouseup(c, button);
+	    return super.mouseup(ev);
 	}
 	return (true);
     }
     
     @Override
-    public void mousemove(Coord c) {
+    public void mousemove(MouseMoveEvent ev) {
 	if(dm != null) {
-	    this.c = this.c.add(c.add(doff.inv()));
+	    this.c = this.c.add(ev.c.add(doff.inv()));
 	} else {
-	    super.mousemove(c);
+	    super.mousemove(ev);
 	}
     }
     

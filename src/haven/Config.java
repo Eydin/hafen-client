@@ -28,23 +28,24 @@ package haven;
 
 import haven.rx.Reactor;
 import integrations.mapv4.MappingClient;
+import me.ender.ClientUtils;
 
 import java.io.*;
-import java.net.URL;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Properties;
 import java.util.function.*;
-import java.io.*;
-import java.nio.file.*;
 
 public class Config {
-    public static final File HOMEDIR = new File("").getAbsoluteFile();
-    public static final String LINE_SEPARATOR = System.getProperty("line.separator");
+    public static final boolean iswindows = System.getProperty("os.name").startsWith("Windows");
+    public static final String LINE_SEPARATOR = System.lineSeparator();
     public static final Properties jarprops = getjarprops();
-    public static final String confid = jarprops.getProperty("config.client-id", "unknown");
+    public static final File HOMEDIR = getHomeDir();
+    public static final String confid = get().getprop("config.client-id", "unknown");
+    public static final String clientType = get().getprop("ender.client-type", confid);
     public static final Variable<Boolean> par = Variable.def(() -> true);
     public final Properties localprops = getlocalprops();
 
@@ -92,6 +93,17 @@ public class Config {
 	}
     }
     
+    private static File getHomeDir() {
+	String dir = get().getprop("config.homedir", "workdir");
+	if("hashdir".equals(dir)) {
+	    File file = new File(HashDirCache.findbase().getParent() + File.separator + "ender-client");
+	    file.mkdirs();
+	    return file.getAbsoluteFile();
+	}
+	
+	return new File("").getAbsoluteFile();
+    }
+    
     public static File getFile(String name) {
 	return new File(HOMEDIR, name);
     }
@@ -134,7 +146,7 @@ public class Config {
     private static String getString(InputStream inputStream) {
 	if(inputStream != null) {
 	    try {
-		return Utils.stream2str(inputStream);
+		return ClientUtils.stream2str(inputStream);
 	    } catch (Exception ignore) {
 	    } finally {
 		try {inputStream.close();} catch (IOException ignored) {}
@@ -210,14 +222,10 @@ public class Config {
 	return(Utils.path(p));
     }
 
-    public static final URL parseurl(String url) {
+    public static final URI parseuri(String url) {
 	if((url == null) || url.equals(""))
 	    return(null);
-	try {
-	    return(new URL(url));
-	} catch(java.net.MalformedURLException e) {
-	    throw(new RuntimeException(e));
-	}
+	return(Utils.uri(url));
     }
 
     public static void parsesvcaddr(String spec, Consumer<String> host, Consumer<Integer> port) {
@@ -300,17 +308,75 @@ public class Config {
 	public static Variable<byte[]> propb(String name, byte[] defval) {
 	    return(prop(name, Utils::hex2byte, () -> defval));
 	}
-	public static Variable<URL> propu(String name, URL defval) {
-	    return(prop(name, Config::parseurl, () -> defval));
+	public static Variable<URI> propu(String name, URI defval) {
+	    return(prop(name, Config::parseuri, () -> defval));
 	}
-	public static Variable<URL> propu(String name, String defval) {
-	    return(propu(name, parseurl(defval)));
+	public static Variable<URI> propu(String name, String defval) {
+	    return(propu(name, parseuri(defval)));
 	}
 	public static Variable<Path> propp(String name, Path defval) {
 	    return(prop(name, Config::parsepath, () -> defval));
 	}
 	public static Variable<Path> propp(String name, String defval) {
 	    return(propp(name, parsepath(defval)));
+	}
+    }
+
+    public static class Services {
+	public static final Variable<URI> directory = Config.Variable.propu("haven.svcdir", "");
+	public final URI rel;
+	public final Properties props;
+
+	public Services(URI rel, Properties props) {
+	    this.rel = rel;
+	    this.props = props;
+	}
+
+	private static Services fetch(URI uri) {
+	    Properties props = new Properties();
+	    if(uri != null) {
+		Object[] data;
+		try {
+		    try(InputStream fp = Http.fetch(uri.toURL())) {
+			data = new StreamMessage(fp).list();
+		    }
+		} catch(IOException exc) {
+		    throw(new RuntimeException(exc));
+		}
+		for(Object d : data) {
+		    Object[] p = (Object[])d;
+		    props.put(p[0], p[1]);
+		}
+	    }
+	    return(new Services(uri, props));
+	}
+
+	private static Services global = null;
+	public static Services get() {
+	    if(global != null)
+		return(global);
+	    synchronized(Services.class) {
+		if(global == null)
+		    global = fetch(directory.get());
+		return(global);
+	    }
+	}
+
+	public URI geturi(String name) {
+	    String val = props.getProperty(name);
+	    if(val == null)
+		return(null);
+	    return(rel.resolve(parseuri(val)));
+	}
+
+	public static Variable<URI> var(String name, String defval) {
+	    URI def = parseuri(defval);
+	    return new Variable<URI>(cfg -> {
+		    String pv = cfg.getprop("haven." + name, null);
+		    if(pv != null)
+			return(parseuri(pv));
+		    return(Services.get().geturi(name));
+	    });
 	}
     }
 
@@ -362,8 +428,8 @@ public class Config {
 		break;
 	    case 'U':
 		try {
-		    Resource.resurl.set(new URL(opt.arg));
-		} catch(java.net.MalformedURLException e) {
+		    Resource.resurl.set(Utils.uri(opt.arg));
+		} catch(IllegalArgumentException e) {
 		    System.err.println(e);
 		    System.exit(1);
 		}

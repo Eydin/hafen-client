@@ -3,8 +3,8 @@ package haven;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class GobDamageInfo extends GobInfo {
     private static final int SHP = 61455;
@@ -17,12 +17,7 @@ public class GobDamageInfo extends GobInfo {
     private static final Color HHP_C = Utils.col16(HHP);
     private static final Color ARM_C = Utils.col16(ARM);
     
-    private static final Map<Long, DamageVO> gobDamage = new LinkedHashMap<Long, DamageVO>() {
-	@Override
-	protected boolean removeEldestEntry(Map.Entry eldest) {
-	    return size() > 50;
-	}
-    };
+    private static final Map<Long, DamageVO> gobDamage = new ConcurrentHashMap<>();
     
     private final DamageVO damage;
     

@@ -26,125 +26,69 @@
 
 package haven;
 
-import java.awt.Color;
-import java.awt.event.KeyEvent;
+import me.ender.gob.GobEffects;
 
-public class RootWidget extends ConsoleHost implements UI.MessageWidget {
-    public static final Resource defcurs = Resource.local().loadwait("gfx/hud/curs/arw");
+import java.util.*;
+import java.awt.Color;
+
+public class RootWidget extends ConsoleHost implements UI.Notice.Handler, Widget.CursorQuery.Handler, Console.Directory {
     public static final Text.Foundry msgfoundry = new Text.Foundry(Text.dfont, 14);
-    public static final Resource errsfx = Resource.local().loadwait("sfx/error");
-    public static final Resource msgsfx = Resource.local().loadwait("sfx/msg");
+    public static final Resource defcurs = Resource.local().loadwait("gfx/hud/curs/arw");
     public boolean modtip = false;
     Profile guprof, grprof, ggprof;
     private Text lastmsg;
     private double msgtime;
+    public final GobEffects effects;
 	
-    final boolean[] mods = new boolean[3]; //CTRL, ALT, SHIFT
-    final long[] presses = new long[3]; //CTRL, ALT, SHIFT
     
     public RootWidget(UI ui, Coord sz) {
 	super(ui, new Coord(0, 0), sz);
 	setfocusctl(true);
 	hasfocus = true;
-	cursor = defcurs.indir();
+	effects = new GobEffects(ui);
     }
 	
-    public boolean globtype(char key, KeyEvent ev) {
-	if(super.globtype(key, ev)) {
-	    return false;
+    public boolean getcurs(CursorQuery ev) {
+	Resource ret = defcurs;
+	if(cursor != null) {
+	    try {
+		ret = cursor.get();
+	    } catch(Loading l) {}
 	}
+	ev.set(ret);
+	return(false);
+    }
+
+    public boolean globtype(GlobKeyEvent ev) {
+	if(ev.propagate(this))
+	    return(true);
 	if(KeyBinder.handle(ui, ev)) {
-	    return false;
+	    return true;
 	}
-	if(key == '`') {
+	if(ev.c == '`') {
 	    if(UIPanel.profile.get()) {
 		add(new Profwnd(guprof, "UI profile"), UI.scale(100, 100));
 		add(new Profwnd(grprof, "GL profile"), UI.scale(500, 100));
-		    /* XXXRENDER
-		    GameUI gi = findchild(GameUI.class);
-		    if((gi != null) && (gi.map != null))
-			add(new Profwnd(gi.map.prof, "Map profile"), UI.scale(100, 250));
-		    */
+		/* XXXRENDER
+		   GameUI gi = findchild(GameUI.class);
+		   if((gi != null) && (gi.map != null))
+		   add(new Profwnd(gi.map.prof, "Map profile"), UI.scale(100, 250));
+		*/
 	    }
 	    if(UIPanel.profilegpu.get()) {
 		add(new Profwnd(ggprof, "GPU profile"), UI.scale(500, 250));
 	    }
-	} else if(key == ':') {
-	    if(super.globtype(key, ev)) {
-		return false;
-	    } else {
-		entercmd();
-		return true;
-	    }
-	} else if(key != 0) {
-	    wdgmsg("gk", (int) key);
+	    return(true);
+	} else if(ev.c == ':') {
+	    entercmd();
+	    return(true);
+	} else if(ev.c != 0) {
+	    wdgmsg("gk", (int)ev.c, ev.mods);
+	    return(true);
 	}
-	return true;
-    }
-
-    @Override
-    public boolean keydown(KeyEvent ev) {
-	return super.keydown(ev);
+	return(super.globtype(ev));
     }
     
-    @Override
-    public boolean keyup(KeyEvent ev) {
-	return super.keyup(ev);
-    }
-    
-    void processModDown(KeyEvent ev) {
-	mods[0] = isCTRL(ev);
-	mods[1] = isALT(ev);
-	mods[2] = isSHIFT(ev);
-    }
-    
-    void processModUp(KeyEvent ev) {
-	if(mods[0] && isCTRL(ev)) {
-	    presses[0]++;
-	} else if(mods[1] && isALT(ev)) {
-	    presses[1]++;
-	} else if(mods[2] && isSHIFT(ev)) {
-	    presses[2]++;
-	}
-	
-	mods[0] = mods[1] = mods[2] = false;
-    }
-    
-    public long CTRLs() {return presses[0];}
-    
-    public long ALTs() {return presses[1];}
-    
-    public long SHIFTs() {return presses[2];}
-    
-    private boolean isCTRL(KeyEvent ev) {
-	return ev.getModifiersEx() == (ev.getModifiersEx() & KeyEvent.CTRL_DOWN_MASK)
-	    && KeyEvent.VK_CONTROL == ev.getExtendedKeyCode()
-	    && KeyEvent.VK_CONTROL == ev.getKeyCode();
-    }
-    
-    private boolean isALT(KeyEvent ev) {
-	return (
-	    ev.getModifiersEx() == (ev.getModifiersEx() & KeyEvent.ALT_DOWN_MASK)
-		&& KeyEvent.VK_ALT == ev.getExtendedKeyCode()
-		&& KeyEvent.VK_ALT == ev.getKeyCode()
-	) || (
-	    ev.getModifiersEx() == (ev.getModifiersEx() & KeyEvent.META_DOWN_MASK)
-		&& KeyEvent.VK_META == ev.getExtendedKeyCode()
-		&& KeyEvent.VK_META == ev.getKeyCode()
-	);
-    }
-    
-    private boolean isSHIFT(KeyEvent ev) {
-	return ev.getModifiersEx() == (ev.getModifiersEx() & KeyEvent.SHIFT_DOWN_MASK)
-	    && KeyEvent.VK_SHIFT == ev.getExtendedKeyCode()
-	    && KeyEvent.VK_SHIFT == ev.getKeyCode();
-    }
-    
-    @Override
-    public boolean mousedown(Coord c, int button) {
-	return super.mousedown(c, button);
-    }
-
     public void draw(GOut g) {
 	super.draw(g);
 	if(cmdline != null) {
@@ -166,12 +110,32 @@ public class RootWidget extends ConsoleHost implements UI.MessageWidget {
 	if(msg == "err") {
 	    ui.error((String)args[0]);
 	} else if(msg == "msg") {
-	    ui.msg((String)args[0]);
+	    if(args.length == 1) {
+		ui.msg((String)args[0]);
+	    } else {
+		int a = 0;
+		UI.SimpleMessage info = new UI.InfoMessage((String)args[a++]);
+		if(args[a] instanceof Color)
+		    info.color = (Color)args[a++];
+		if(args.length > a) {
+		    Indir<Resource> res = ui.sess.getresv(args[a++]);
+		    info.sfx = (res == null) ? null : Audio.resclip(res.get());
+		}
+		ui.msg(info);
+	    }
+	} else if(msg == "msg2") {
+	    Resource res = ui.sess.getresv(args[0]).get();
+	    UI.Notice.Factory fac = res.getcode(UI.Notice.Factory.class, true);
+	    ui.msg(fac.format(new OwnerContext() {
+		    public <T> T context(Class<T> cl) {
+			return(wdgctx.context(cl, RootWidget.this));
+		    }
+		}, Utils.splice(args, 1)));
 	} else if(msg == "sfx") {
 	    int a = 0;
-	    Indir<Resource> resid = ui.sess.getres((Integer)args[a++]);
-	    double vol = (args.length > a) ? ((Number)args[a++]).doubleValue() : 1.0;
-	    double spd = (args.length > a) ? ((Number)args[a++]).doubleValue() : 1.0;
+	    Indir<Resource> resid = ui.sess.getresv(args[a++]);
+	    double vol = (args.length > a) ? Utils.dv(args[a++]) : 1.0;
+	    double spd = (args.length > a) ? Utils.dv(args[a++]) : 1.0;
 	    ui.sess.glob.loader.defer(() -> {
 		    Audio.CS clip = Audio.fromres(resid.get());
 		    if(spd != 1.0)
@@ -182,8 +146,8 @@ public class RootWidget extends ConsoleHost implements UI.MessageWidget {
 		}, null);
 	} else if(msg == "bgm") {
 	    int a = 0;
-	    Indir<Resource> resid = (args.length > a) ? ui.sess.getres((Integer)args[a++]) : null;
-	    boolean loop = (args.length > a) ? ((Number)args[a++]).intValue() != 0 : false;
+	    Indir<Resource> resid = (args.length > a) ? ui.sess.getresv(args[a++]) : null;
+	    boolean loop = (args.length > a) ? Utils.bv(args[a++]) : false;
 	    if(Music.enabled) {
 		if(resid == null)
 		    Music.play(null, false);
@@ -193,6 +157,9 @@ public class RootWidget extends ConsoleHost implements UI.MessageWidget {
 	} else {
 	    super.uimsg(msg, args);
 	}
+	if(msg == "curs") {
+	    ui.sess.character.updateCursor(cursor);
+	}
     }
 
     public void msg(String msg, Color color) {
@@ -200,29 +167,51 @@ public class RootWidget extends ConsoleHost implements UI.MessageWidget {
 	msgtime = Utils.rtime();
     }
 
-    private double lasterrsfx = 0;
-    public void error(String msg) {
-	msg(msg, new Color(192, 0, 0));
-	double now = Utils.rtime();
-	if(now - lasterrsfx > 0.1) {
-	    ui.sfx(errsfx);
-	    lasterrsfx = now;
-	}
+    public boolean msg(UI.Notice msg) {
+	msg(msg.message(), msg.color());
+	ui.sfxrl(msg.sfx());
+	return(true);
     }
-
-    private double lastmsgsfx = 0;
-    public void msg(String msg) {
-	msg(msg, Color.WHITE);
-	double now = Utils.rtime();
-	if(now - lastmsgsfx > 0.1) {
-	    ui.sfx(msgsfx);
-	    lastmsgsfx = now;
-	}
+    
+    @Override
+    public void tick(double dt) {
+	effects.tick(dt);
+	super.tick(dt);
+    }
+    
+    public void error(String msg) {
+	ui.error(msg);
     }
 
     public Object tooltip(Coord c, Widget prev) {
 	if(modtip && (ui.modflags() != 0))
 	    return(KeyMatch.modname(ui.modflags()));
 	return(super.tooltip(c, prev));
+    }
+
+    private Map<String, Console.Command> cmdmap = new TreeMap<String, Console.Command>();
+    {
+	cmdmap.put("wdgtree", new Console.Command() {
+		public void run(Console cons, String[] args) throws Exception {
+		    for(Widget w = RootWidget.this; w != null; w = w.rnext()) {
+			for(Widget p = w.parent; p != null; p = p.parent)
+			    cons.out.write('\t');
+			cons.out.write(w.visible ? 'S' : 'H');
+			cons.out.write(' ');
+			cons.out.write(w.hasfocus ? "F" : "f");
+			cons.out.write(w.focusctl ? "C" : "c");
+			cons.out.write(w.focustab ? "T" : "t");
+			cons.out.write(w.canfocus ? "A" : "a");
+			cons.out.write(w.autofocus ? "T" : "t");
+			cons.out.write(((w.parent != null) && (w.parent.focused == w)) ? "P" : "p");
+			cons.out.write(' ');
+			cons.out.write(w.toString());
+			cons.out.write('\n');
+		    }
+		}
+	    });
+    }
+    public Map<String, Console.Command> findcmds() {
+	return(cmdmap);
     }
 }

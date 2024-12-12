@@ -64,14 +64,14 @@ public abstract class ACheckBox extends Widget {
     public ACheckBox rclick(Runnable rclick) {this.rclick = rclick; return(this);}
     public void rclick() {if(rclick != null) {rclick.run();}}
 
-    public boolean gkeytype(java.awt.event.KeyEvent ev) {
+    public boolean gkeytype(GlobKeyEvent ev) {
 	click();
 	return(true);
     }
 
     public void uimsg(String msg, Object... args) {
 	if(msg == "ch") {
-	    this.a = ((Integer)args[0]) != 0;
+	    this.a = Utils.bv(args[0]);
 	} else {
 	    super.uimsg(msg, args);
 	}

@@ -34,11 +34,15 @@ import java.util.List;
 import haven.ItemInfo.AttrCache;
 
 public class Buff extends Widget implements ItemInfo.ResOwner, Bufflist.Managed {
+    public static final String OPEN_GREEN = "paginae/atk/offbalance";
+    public static final String OPEN_YELLOW = "paginae/atk/reeling";
+    public static final String OPEN_BLUE = "paginae/atk/dizzy";
+    public static final String OPEN_RED = "paginae/atk/cornered";
     private static final Map<String, Color> OPENINGS = new HashMap<String, Color>(4) {{
-	put("paginae/atk/offbalance", new Color(81, 165, 56));
-	put("paginae/atk/reeling", new Color(210, 210, 64));
-	put("paginae/atk/dizzy", new Color(39, 82, 191));
-	put("paginae/atk/cornered", new Color(192, 28, 28));
+	put(OPEN_GREEN, new Color(81, 165, 56));
+	put(OPEN_YELLOW, new Color(210, 210, 64));
+	put(OPEN_BLUE, new Color(39, 82, 191));
+	put(OPEN_RED, new Color(192, 28, 28));
 //	put("paginae/atk/guard", new Color(64, 64, 64));
     }};
     
@@ -66,7 +70,7 @@ public class Buff extends Widget implements ItemInfo.ResOwner, Bufflist.Managed 
     @RName("buff")
     public static class $_ implements Factory {
 	public Widget create(UI ui, Object[] args) {
-	    Indir<Resource> res = ui.sess.getres((Integer)args[0]);
+	    Indir<Resource> res = ui.sess.getresv(args[0]);
 	    return(new Buff(res));
 	}
     }
@@ -86,8 +90,12 @@ public class Buff extends Widget implements ItemInfo.ResOwner, Bufflist.Managed 
     public <T> T context(Class<T> cl) {return(ctxr.context(cl, this));}
 
     public List<ItemInfo> info() {
-	if(info == null)
+	if(info == null) {
 	    info = ItemInfo.buildinfo(this, rawinfo);
+	    Resource.Pagina pag = res.get().layer(Resource.pagina);
+	    if(pag != null)
+		info.add(new ItemInfo.Pagina(this, pag.text));
+	}
 	return(info);
     }
 
@@ -190,13 +198,14 @@ public class Buff extends Widget implements ItemInfo.ResOwner, Bufflist.Managed 
 
     private BufferedImage longtip() {
 	BufferedImage img;
-	if(rawinfo != null)
+	if(rawinfo != null) {
 	    img = ItemInfo.longtip(info());
-	else
+	} else {
 	    img = shorttip();
-	Resource.Pagina pag = res.get().layer(Resource.pagina);
-	if(pag != null)
-	    img = ItemInfo.catimgs(0, img, RichText.render("\n" + pag.text, textw).img);
+	    Resource.Pagina pag = res.get().layer(Resource.pagina);
+	    if(pag != null)
+		img = ItemInfo.catimgs(0, img, RichText.render("\n" + pag.text, textw).img);
+	}
 	return(img);
     }
 
@@ -207,18 +216,14 @@ public class Buff extends Widget implements ItemInfo.ResOwner, Bufflist.Managed 
 	double now = Utils.rtime();
 	if(prev != this)
 	    hoverstart = now;
-	try {
-	    if(now - hoverstart < 1.0) {
-		if(shorttip == null)
-		    shorttip = new TexI(shorttip());
-		return(shorttip);
-	    } else {
-		if(longtip == null)
-		    longtip = new TexI(longtip());
-		return(longtip);
-	    }
-	} catch(Loading e) {
-	    return("...");
+	if(now - hoverstart < 1.0) {
+	    if(shorttip == null)
+		shorttip = new TexI(shorttip());
+	    return(shorttip);
+	} else {
+	    if(longtip == null)
+		longtip = new TexI(longtip());
+	    return(longtip);
 	}
     }
 
@@ -257,32 +262,27 @@ public class Buff extends Widget implements ItemInfo.ResOwner, Bufflist.Managed 
 
     public void uimsg(String msg, Object... args) {
 	if(msg == "ch") {
-	    this.res = ui.sess.getres((Integer)args[0]);
+	    this.res = ui.sess.getresv(args[0]);
 	} else if(msg == "tt") {
 	    info = null;
 	    rawinfo = new ItemInfo.Raw(args);
 	    shorttip = longtip = null;
-	} else if(msg == "tip") {
-	    String tt = (String)args[0];
-	    this.tt = tt.equals("") ? null : tt;
-	    shorttip = longtip = null;
-	} else if(msg == "am") {
-	    this.ameter = (Integer)args[0];
-	    shorttip = longtip = null;
-	} else if(msg == "nm") {
-	    this.rnmeter = (Integer)args[0];
-	    ntext = null;
-	} else if(msg == "cm") {
-	    this.cmeter = ((Number)args[0]).doubleValue() / 100.0;
-	    this.cmrem = (args.length > 1) ? (((Number)args[1]).doubleValue() * 0.06) : -1;
-	    gettime = Utils.rtime();
 	} else {
 	    super.uimsg(msg, args);
 	}
     }
+    
+    public int getNMeter() {return nmeter;}
+    
+    public int ameter() {
+	if(ameter >= 0) {return ameter;}
+	Double v = ameteri.get();
+	if(v == null) {return -1;}
+	return (int) Math.floor(v * 100);
+    }
 
-    public boolean mousedown(Coord c, int btn) {
-	wdgmsg("cl", c.sub(imgoff), btn, ui.modflags());
+    public boolean mousedown(MouseDownEvent ev) {
+	wdgmsg("cl", ev.c.sub(imgoff), ev.b, ui.modflags());
 	return(true);
     }
 }

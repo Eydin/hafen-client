@@ -28,6 +28,7 @@ package haven;
 
 import java.util.*;
 import haven.render.*;
+import me.ender.CustomizeStaticSprite;
 
 public class StaticSprite extends Sprite {
     public final RenderTree.Node[] parts;
@@ -80,6 +81,7 @@ public class StaticSprite extends Sprite {
     }
 
     public void added(RenderTree.Slot slot) {
+	CustomizeStaticSprite.added(this, slot);
 	for(RenderTree.Node p : parts)
 	    slot.add(p);
     }

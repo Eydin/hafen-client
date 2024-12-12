@@ -26,15 +26,16 @@
 
 package haven;
 
+import java.util.*;
+
 public class RemoteUI implements UI.Receiver, UI.Runner {
     public final Session sess;
-    private Session ret;
-	
+
     public RemoteUI(Session sess) {
 	this.sess = sess;
 	Widget.initnames();
     }
-	
+
     public void rcvmsg(int id, String name, Object... args) {
 	PMessage msg = new PMessage(RMessage.RMSG_WDGMSG);
 	msg.addint32(id);
@@ -42,59 +43,106 @@ public class RemoteUI implements UI.Receiver, UI.Runner {
 	msg.addlist(args);
 	sess.queuemsg(msg);
     }
-	
-    public void ret(Session sess) {
-	synchronized(this.sess) {
-	    this.ret = sess;
-	    this.sess.notifyAll();
+
+    public static class Return extends PMessage {
+	public final Session ret;
+
+	public Return(Session ret) {
+	    super(-1);
+	    this.ret = ret;
 	}
+    }
+
+    private void sendua(String key, String val) {
+	PMessage msg = new PMessage(RMessage.RMSG_USERAGENT);
+	msg.addstring(key).addstring(val);
+	sess.queuemsg(msg);
+    }
+
+    private void sendua(UI ui) {
+	try {
+	    sendua("conf.id", Config.confid);
+	    sendua("java.vm", Utils.getprop("java.vm.name", ""));
+	    sendua("java.version", Utils.getprop("java.version", ""));
+	    sendua("os.name", Utils.getprop("os.name", ""));
+	    sendua("os.arch", Utils.getprop("os.arch", ""));
+	    sendua("os.version", Utils.getprop("os.version", ""));
+	    sendua("mem.heap", String.valueOf(Runtime.getRuntime().maxMemory()));
+	    sendua("cpu.num", String.valueOf(Runtime.getRuntime().availableProcessors()));
+	    sendua("ui.scale", String.valueOf(UI.scale(1.0)));
+	    haven.render.Environment env = ui.getenv();
+	    if(env != null) {
+		sendua("render.env", env.getClass().getSimpleName());
+		sendua("render.vendor", env.caps().vendor());
+		sendua("render.device", env.caps().device());
+		sendua("render.driver", env.caps().driver());
+	    }
+	    sendua("ender.client", Config.clientType);
+	    sendua("ender.theme", CFG.THEME.get().name());
+	    sendua("ender.lang", L10N.language);
+	} catch(Exception e) {
+	    new Warning(e).issue();
+	}
+    }
+
+    public void ret(Session sess) {
+	this.sess.postuimsg(new Return(sess));
     }
 
     public UI.Runner run(UI ui) throws InterruptedException {
 	try {
 	    ui.setreceiver(this);
+	    sendua(ui);
 	    while(true) {
-		PMessage msg;
-		while((msg = sess.getuimsg()) != null) {
-		    if(msg.type == RMessage.RMSG_NEWWDG) {
-			int id = msg.int32();
-			String type = msg.string();
-			int parent = msg.int32();
-			Object[] pargs = msg.list();
-			Object[] cargs = msg.list();
-			ui.newwidget(id, type, parent, pargs, cargs);
-		    } else if(msg.type == RMessage.RMSG_WDGMSG) {
-			int id = msg.int32();
-			String name = msg.string();
-			ui.uimsg(id, name, msg.list());
-		    } else if(msg.type == RMessage.RMSG_DSTWDG) {
-			int id = msg.int32();
-			ui.destroy(id);
-		    } else if(msg.type == RMessage.RMSG_ADDWDG) {
-			int id = msg.int32();
-			int parent = msg.int32();
-			Object[] pargs = msg.list();
-			ui.addwidget(id, parent, pargs);
-		    } else if(msg.type == RMessage.RMSG_WDGBAR) {
-			/* Ignore for now. */
+		PMessage msg = sess.getuimsg();
+		if(msg == null) {
+		    return(null);
+		} else if(msg instanceof Return) {
+		    sess.close();
+		    return(new RemoteUI(((Return)msg).ret));
+		} else if(msg.type == RMessage.RMSG_NEWWDG) {
+		    int id = msg.int32();
+		    String type = msg.string();
+		    int parent = msg.int32();
+		    Object[] pargs = msg.list();
+		    Object[] cargs = msg.list();
+		    ui.newwidgetp(id, type, parent, pargs, cargs);
+		} else if(msg.type == RMessage.RMSG_WDGMSG) {
+		    int id = msg.int32();
+		    String name = msg.string();
+		    ui.uimsg(id, name, msg.list());
+		} else if(msg.type == RMessage.RMSG_DSTWDG) {
+		    int id = msg.int32();
+		    ui.destroy(id);
+		} else if(msg.type == RMessage.RMSG_ADDWDG) {
+		    int id = msg.int32();
+		    int parent = msg.int32();
+		    Object[] pargs = msg.list();
+		    ui.addwidget(id, parent, pargs);
+		} else if(msg.type == RMessage.RMSG_WDGBAR) {
+		    Collection<Integer> deps = new ArrayList<>();
+		    while(!msg.eom()) {
+			int dep = msg.int32();
+			if(dep == -1)
+			    break;
+			deps.add(dep);
 		    }
-		}
-		synchronized(sess) {
-		    if(ret != null) {
-			sess.close();
-			return(new RemoteUI(ret));
+		    Collection<Integer> bars = deps;
+		    if(!msg.eom()) {
+			bars = new ArrayList<>();
+			while(!msg.eom()) {
+			    int bar = msg.int32();
+			    if(bar == -1)
+				break;
+			    bars.add(bar);
+			}
 		    }
-		    if(!sess.alive())
-			return(null);
-		    sess.wait();
+		    ui.wdgbarrier(deps, bars);
 		}
 	    }
 	} finally {
 	    sess.close();
-	    synchronized(sess) {
-		while(sess.alive())
-		    sess.wait();
-	    }
+	    while(sess.getuimsg() != null);
 	}
     }
 

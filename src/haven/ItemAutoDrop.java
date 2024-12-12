@@ -3,6 +3,7 @@ package haven;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
+import me.ender.ui.CFGBox;
 import rx.functions.Action0;
 
 import java.awt.*;
@@ -38,6 +39,21 @@ public class ItemAutoDrop {
     public static boolean needDrop(String name) {
 	tryInit();
 	return cfg.getOrDefault(name, false);
+    }
+    
+    public static String name(WItem target) {
+	String result = target.name.get(null);
+	target = target.item.contents != null
+	    ? target.item.contents.getchild(WItem.class)
+	    : null;
+	
+	if(target != null) {
+	    result = name(target);
+	}
+	if(result != null && result.endsWith(", stack of")) {
+	    result = result.substring(0, result.length() - 10);
+	}
+	return result;
     }
     
     private static void toggle(String name) {
@@ -98,9 +114,9 @@ public class ItemAutoDrop {
 	}
     }
     
-    public static class CFGWnd extends WindowX implements DTarget2 {
-	public static final String FILTER_DEFAULT = "Start typing to filter";
-	public static final Comparator<DropItem> BY_NAME = Comparator.comparing(dropItem -> dropItem.name);
+    public static class CFGWnd extends WindowX implements DTarget {
+	private static final String FILTER_DEFAULT = "Start typing to filter";
+	private static final Comparator<DropItem> BY_NAME = Comparator.comparing(dropItem -> dropItem.name);
 	
 	private boolean raised = false;
 	private final DropList list;
@@ -126,7 +142,7 @@ public class ItemAutoDrop {
 	    filter = adda(new Label(FILTER_DEFAULT), ur, 1, 1);
 	    
 	    Coord p = list.pos("bl").addys(10);
-	    p = add(new OptWnd.CFGBox("Don't drop filtered items", CFG.AUTO_DROP_RESPECT_FILTER).set(CFGWnd::respectFilterChanged), p).pos("bl").addys(10);
+	    p = add(new CFGBox("Don't drop filtered items", CFG.AUTO_DROP_RESPECT_FILTER).set(CFGWnd::respectFilterChanged), p).pos("bl").addys(10);
 	    p = add(new Label("Drop item on this window to add it to list"), p).pos("bl");
 	    add(new Label("Right-click item to remove it"), p);
 	    
@@ -174,8 +190,8 @@ public class ItemAutoDrop {
 	}
 	
 	@Override
-	public boolean drop(WItem target, Coord cc, Coord ul) {
-	    String name = target.name.get(null);
+	public boolean drop(Drop ev) {
+	    String name = name(ev.src);
 	    if(name != null) {
 		if(ItemAutoDrop.add(name)) {
 		    addItem(name);
@@ -185,7 +201,7 @@ public class ItemAutoDrop {
 	}
 	
 	@Override
-	public boolean iteminteract(WItem target, Coord cc, Coord ul) {
+	public boolean iteminteract(Interact ev) {
 	    return false;
 	}
 	
@@ -247,15 +263,15 @@ public class ItemAutoDrop {
 	    }
 	    
 	    @Override
-	    public boolean mousedown(Coord c, int button) {
-		int idx = idxat(c);
+	    public boolean mousedown(MouseDownEvent ev) {
+		int idx = idxat(ev.c);
 		if((idx >= 0) && (idx < listitems())) {
-		    Coord ic = c.sub(idxc(idx));
+		    Coord ic = ev.c.sub(idxc(idx));
 		    DropItem item = listitem(idx);
 		    if(ic.x < showc.x + CheckBox.sbox.sz().x) {
-			if(button == 1) {
+			if(ev.b == 1) {
 			    toggle(item.name);
-			} else if(button == 3) {
+			} else if(ev.b == 3) {
 			    ItemAutoDrop.remove(item.name);
 			    list.items.remove(item);
 			    list.needfilter();
@@ -263,7 +279,7 @@ public class ItemAutoDrop {
 			return (true);
 		    }
 		}
-		return (super.mousedown(c, button));
+		return (super.mousedown(ev));
 	    }
 	}
     }

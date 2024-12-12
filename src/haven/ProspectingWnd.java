@@ -1,6 +1,7 @@
 package haven;
 
 import haven.render.*;
+import me.ender.ClientUtils;
 import me.ender.Reflect;
 
 import java.nio.Buffer;
@@ -38,7 +39,7 @@ public class ProspectingWnd extends WindowX {
     
     @Override
     public void destroy() {
-	WINDOWS.remove(this);
+	synchronized (WINDOWS) {WINDOWS.remove(this);}
 	if(slot != null) {slot.remove();}
 	super.destroy();
     }
@@ -46,7 +47,7 @@ public class ProspectingWnd extends WindowX {
     @Override
     protected void attach(UI ui) {
 	super.attach(ui);
-	WINDOWS.add(this);
+	synchronized (WINDOWS) {WINDOWS.add(this);}
 	Gob player = ui.gui.map.player();
 	pc = player == null ? null : player.rc;
 	attachEffect();
@@ -59,7 +60,7 @@ public class ProspectingWnd extends WindowX {
 	    if(p != null) {pc = p.rc;}
 	}
 	if(pc != null) {
-	    ui.gui.mapfile.addMarker(pc.floor(tilesz), String.format("%s (below)", Utils.prettyResName(detected)));
+	    ui.gui.mapfile.addMarker(pc.floor(tilesz), String.format("%s (below)", ClientUtils.prettyResName(detected)));
 	}
     }
     
@@ -68,8 +69,10 @@ public class ProspectingWnd extends WindowX {
     }
     
     private static void attachEffect() {
-	if(!WINDOWS.isEmpty() && !EFFECTS.isEmpty()) {
-	    WINDOWS.remove().fx(EFFECTS.remove());
+	synchronized (WINDOWS) {
+	    if(!WINDOWS.isEmpty() && !EFFECTS.isEmpty()) {
+		WINDOWS.remove().fx(EFFECTS.remove());
+	    }
 	}
     }
     

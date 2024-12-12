@@ -30,6 +30,14 @@ package haven;
 import java.util.HashSet;
 import java.util.LinkedList;
 import haven.render.*;
+import me.ender.CFGColorBtn;
+import me.ender.GobInfoOpts;
+import me.ender.CustomOptPanels;
+import me.ender.ui.CFGBox;
+import me.ender.ui.CFGSlider;
+import me.ender.ui.DrinkMeter;
+import me.ender.ui.TabStrip;
+
 import java.awt.event.KeyEvent;
 import java.util.Set;
 
@@ -37,10 +45,10 @@ import static haven.Text.*;
 
 public class OptWnd extends WindowX {
     public static final Coord PANEL_POS = new Coord(220, 30);
-    public static final Coord Q_TYPE_PADDING = new Coord(3, 0);
     private final Panel display, general, camera, shortcuts, mapping, uipanel, combat;
+    private final Panel color;
     public final Panel main;
-    private static final Text.Foundry LBL_FNT = new Text.Foundry(sans, 14);
+    public static final Text.Foundry LBL_FNT = new Text.Foundry(sans, 14);
     public Panel current;
     private WidgetList<KeyBinder.ShortcutWidget> shortcutList;
     
@@ -73,12 +81,12 @@ public class OptWnd extends WindowX {
 	    chpanel(tgt);
 	}
 
-	public boolean keydown(java.awt.event.KeyEvent ev) {
-	    if((this.key != -1) && (ev.getKeyChar() == this.key)) {
+	public boolean keydown(KeyDownEvent ev) {
+	    if((this.key != -1) && (ev.c == this.key)) {
 		click();
 		return (true);
 	    }
-	    return (false);
+	    return (super.keydown(ev));
 	}
     }
     
@@ -101,7 +109,7 @@ public class OptWnd extends WindowX {
 		click();
 		return (true);
 	    }
-	    return (false);
+	    return(super.keydown(ev));
 	}
     }
 
@@ -148,12 +156,18 @@ public class OptWnd extends WindowX {
 			    a = val;
 			}
 		    }, Coord.z);
+		prev = add(new CFGBox("Full screen", CFG.VIDEO_FULL_SCREEN).set(v -> {
+		    try {
+			ui.cons.run(ui.root, new String[]{"fs", v ? "1" : "0"});
+		    } catch (Exception ignored) {
+		    }
+		}), prev.pos("bl").adds(0, 5));
 		prev = add(new Label("Render scale"), prev.pos("bl").adds(0, 5));
 		{
 		    Label dpy = new Label.Untranslated("");
 		    final int steps = 4;
 		    addhlp(prev.pos("bl").adds(0, 2), UI.scale(5),
-			   prev = new HSlider(UI.scale(160), -2 * steps, 2 * steps, (int)Math.round(steps * Math.log(prefs.rscale.val) / Math.log(2.0f))) {
+			   prev = new HSlider(UI.scale(160), -2 * steps, 1 * steps, (int)Math.round(steps * Math.log(prefs.rscale.val) / Math.log(2.0f))) {
 			       protected void added() {
 				   dpy();
 			       }
@@ -164,6 +178,7 @@ public class OptWnd extends WindowX {
 				   try {
 				       float val = (float)Math.pow(2, this.val / (double)steps);
 				       ui.setgprefs(prefs = prefs.update(null, prefs.rscale, val));
+				       if(ui.gui != null && ui.gui.map != null) {ui.gui.map.updateGridMat(null);}
 				   } catch(GSettings.SettingException e) {
 				       error(e.getMessage());
 				       return;
@@ -280,15 +295,17 @@ public class OptWnd extends WindowX {
 		prev = add(new Label("Light-source limit"), prev.pos("bl").adds(0, 5).x(0));
 		{
 		    Label dpy = new Label("");
-		    int val = prefs.maxlights.val;
+		    int val = prefs.maxlights.val, max = 32;
 		    if(val == 0) {    /* XXX: This is just ugly. */
 			if(prefs.lightmode.val == GSettings.LightMode.ZONED)
 			    val = Lighting.LightGrid.defmax;
 			else
 			    val = Lighting.SimpleLights.defmax;
 		    }
+		    if(prefs.lightmode.val == GSettings.LightMode.SIMPLE)
+			max = 4;
 		    addhlp(prev.pos("bl").adds(0, 2), UI.scale(5),
-			   prev = new HSlider(UI.scale(160), 1, 32, val / 4) {
+			   prev = new HSlider(UI.scale(160), 1, max, val / 4) {
 			       protected void added() {
 				   dpy();
 			       }
@@ -447,6 +464,25 @@ public class OptWnd extends WindowX {
 			ui.audio.amb.setvolume(val / 1000.0);
 		    }
 		}, prev.pos("bl").adds(0, 2));
+	    prev = add(new Label("Audio latency"), prev.pos("bl").adds(0, 15));
+	    {
+		Label dpy = new Label("");
+		addhlp(prev.pos("bl").adds(0, 2), UI.scale(5),
+		       prev = new HSlider(UI.scale(160), 128, Math.round(Audio.fmt.getSampleRate() / 4), Audio.bufsize()) {
+			       protected void added() {
+				   dpy();
+			       }
+			       void dpy() {
+				   dpy.settext(Math.round((this.val * 1000) / Audio.fmt.getSampleRate()) + " ms");
+			       }
+			       public void changed() {
+				   Audio.bufsize(val, true);
+				   dpy();
+			       }
+			   }, dpy);
+		prev.settip("Sets the size of the audio buffer. Smaller sizes are better, " +
+			    "but larger sizes can fix issues with broken sound.", true);
+	    }
 	    add(new PButton(UI.scale(200), "Back", 27, back), prev.pos("bl").adds(0, 30));
 	    pack();
 	}
@@ -457,8 +493,9 @@ public class OptWnd extends WindowX {
 	    Widget prev = add(new Label("Interface scale (requires restart)"), 0, 0);
 	    {
 		Label dpy = new Label("");
-		final double smin = 1, smax = Math.floor(UI.maxscale() / 0.25) * 0.25;
-		final int steps = (int)Math.round((smax - smin) / 0.25);
+		final double gran = 0.05;
+		final double smin = 1, smax = Math.floor(UI.maxscale() / gran) * gran;
+		final int steps = (int)Math.round((smax - smin) / gran);
 		addhlp(prev.pos("bl").adds(0, 2), UI.scale(5),
 		       prev = new HSlider(UI.scale(160), 0, steps, (int)Math.round(steps * (Utils.getprefd("uiscale", 1.0) - smin) / (smax - smin))) {
 			       protected void added() {
@@ -486,7 +523,7 @@ public class OptWnd extends WindowX {
 		    final int steps = (int)Math.round((smax - smin) / 0.25);
 		    int ival = (int)Math.round(MapView.plobpgran);
 		    addhlp(Coord.of(x + UI.scale(5), pos.c.y), UI.scale(5),
-			   prev = new HSlider(UI.scale(155 - x), 2, 17, (ival == 0) ? 17 : ival) {
+			   prev = new HSlider(UI.scale(155) - x, 2, 17, (ival == 0) ? 17 : ival) {
 				   protected void added() {
 				       dpy();
 				   }
@@ -511,7 +548,7 @@ public class OptWnd extends WindowX {
 			    ival = i;
 		    }
 		    addhlp(Coord.of(x + UI.scale(5), ang.c.y), UI.scale(5),
-			   prev = new HSlider(UI.scale(155 - x), 0, vals.length - 1, ival) {
+			   prev = new HSlider(UI.scale(155) - x, 0, vals.length - 1, ival) {
 				   protected void added() {
 				       dpy();
 				   }
@@ -638,7 +675,7 @@ public class OptWnd extends WindowX {
     }
 
 
-    public static class PointBind extends Button {
+    public static class PointBind extends Button implements CursorQuery.Handler {
 	public static final String msg = "Bind other elements...";
 	public static final Resource curs = Resource.local().loadwait("gfx/hud/curs/wrench");
 	private UI.Grab mg, kg;
@@ -687,15 +724,15 @@ public class OptWnd extends WindowX {
 	    return(true);
 	}
 
-	public boolean mousedown(Coord c, int btn) {
-	    if(mg == null)
-		return(super.mousedown(c, btn));
+	public boolean mousedown(MouseDownEvent ev) {
+	    if(!ev.grabbed)
+		return(super.mousedown(ev));
 	    Coord gc = ui.mc;
-	    if(btn == 1) {
+	    if(ev.b == 1) {
 		this.cmd = KeyBinding.Bindable.getbinding(ui.root, gc);
 		return(true);
 	    }
-	    if(btn == 3) {
+	    if(ev.b == 3) {
 		mg.remove();
 		mg = null;
 		change(msg);
@@ -704,11 +741,11 @@ public class OptWnd extends WindowX {
 	    return(false);
 	}
 
-	public boolean mouseup(Coord c, int btn) {
+	public boolean mouseup(MouseUpEvent ev) {
 	    if(mg == null)
-		return(super.mouseup(c, btn));
+		return(super.mouseup(ev));
 	    Coord gc = ui.mc;
-	    if(btn == 1) {
+	    if(ev.b == 1) {
 		if((this.cmd != null) && (KeyBinding.Bindable.getbinding(ui.root, gc) == this.cmd)) {
 		    mg.remove();
 		    mg = null;
@@ -719,21 +756,19 @@ public class OptWnd extends WindowX {
 		}
 		return(true);
 	    }
-	    if(btn == 3)
+	    if(ev.b == 3)
 		return(true);
 	    return(false);
 	}
 
-	public Resource getcurs(Coord c) {
-	    if(mg == null)
-		return(null);
-	    return(curs);
+	public boolean getcurs(CursorQuery ev) {
+	    return(ev.grabbed ? ev.set(curs) : false);
 	}
 
-	public boolean keydown(KeyEvent ev) {
-	    if(kg == null)
+	public boolean keydown(KeyDownEvent ev) {
+	    if(!ev.grabbed)
 		return(super.keydown(ev));
-	    if(handle(ev)) {
+	    if(handle(ev.awt)) {
 		kg.remove();
 		kg = null;
 		cmd = null;
@@ -758,6 +793,7 @@ public class OptWnd extends WindowX {
 	camera = add(new Panel());
 	shortcuts = add(new Panel());
 	mapping = add(new Panel());
+	color = add(new Panel());
 
 	int row = 0, colum = 0, mrow = 1;
     
@@ -775,6 +811,7 @@ public class OptWnd extends WindowX {
 	addPanelButton("General", 'g', general, colum, row++);
 	addPanelButton("UI", 'u', uipanel, colum, row++);
 	addPanelButton("Display", 'd', display, colum, row++);
+	addPanelButton("Colors", 'o', color, colum, row++);
 	addPanelButton("Combat", 'b', combat, colum, row++);
 	addPanelButton("Map upload", 'm', mapping, colum, row++);
 
@@ -787,6 +824,11 @@ public class OptWnd extends WindowX {
 	//y = main.add(new PButton(UI.scale(200), "Keybindings", 'k', keybind), 0, y).pos("bl").adds(0, 5).y;
 	y += UI.scale((mrow + 1) * PANEL_POS.y);
 	if(gopts) {
+	    if((SteamStore.steamsvc.get() != null) && (Steam.get() != null)) {
+		y = main.add(new Button(UI.scale(200), "Visit store", false).action(() -> {
+			    SteamStore.launch(ui.sess);
+		}), 0, y).pos("bl").adds(0, 5).y;
+	    }
 	    y = main.add(new Button(UI.scale(200), "Switch character", false).action(() -> {
 			getparent(GameUI.class).act("lo", "cs");
 	    }), 0, y).pos("bl").adds(0, 5).y;
@@ -802,10 +844,11 @@ public class OptWnd extends WindowX {
 	chpanel(this.main);
 	initDisplayPanel(display);
 	initUIPanel(uipanel);
-	initCombatPanel(combat);
+	CustomOptPanels.initCombatPanel(this, combat);
 	initGeneralPanel(general);
 	initCameraPanel();
 	initMappingPanel(mapping);
+	CustomOptPanels.initColorPanel(this, color);
 	main.pack();
 	chpanel(main);
     }
@@ -932,22 +975,23 @@ public class OptWnd extends WindowX {
     
 	y += STEP;
 	panel.add(new CFGBox("Item drop protection", CFG.ITEM_DROP_PROTECTION, "Drop items on cursor only when CTRL is pressed"), new Coord(x, y));
+	
+	y += STEP;
+	panel.add(new CFGBox("Container decal pickup protection", CFG.DECAL_SHIFT_PICKUP, "Require holding CTRL or SHIFT to pickup decals placed on containers."), new Coord(x, y));
     
 	y += STEP;
-	panel.add(new CFGBox("Enable path queueing", CFG.QUEUE_PATHS, "ALT+LClick will queue movement"), x, y);
+	panel.add(new CFGBox("Enable path queueing", CFG.QUEUE_PATHS, "ALT+LClick in world or on minimap will queue movement"), x, y);
     
 	y += STEP;
 	Coord tsz = panel.add(new Label("Default speed:"), x, y).sz;
 	panel.adda(new Speedget.SpeedSelector(UI.scale(100)), new Coord(x + tsz.x + UI.scale(5), y + tsz.y / 2), 0, 0.5);
     
 	y += 2 * STEP;
-	Label label = panel.add(new Label(String.format("Auto pickup radius: %.2f", CFG.AUTO_PICK_RADIUS.get() / 11.0)), x, y);
+	Label label = panel.add(new Label(""), x, y);
 	y += UI.scale(15);
-	panel.add(new CFGHSlider(UI.scale(150), CFG.AUTO_PICK_RADIUS, 33, 352) {
+	panel.add(new CFGSlider(UI.scale(150), 33, 352, CFG.AUTO_PICK_RADIUS, label, "Auto pickup radius: %.02f") {
 	    @Override
-	    public void changed() {
-		label.settext(String.format("Auto pickup radius: %.02f", val / 11.0));
-	    }
+	    protected void updateLabel() {this.label.settext(String.format(format, val / 11.0));}
 	}, x, y);
     
 	y += STEP;
@@ -1042,6 +1086,7 @@ public class OptWnd extends WindowX {
 
     private void initDisplayPanel(Panel panel) {
 	int STEP = UI.scale(25);
+	int H_STEP = UI.scale(10);
 	int START;
 	int x, y;
 	int my = 0, tx;
@@ -1057,7 +1102,22 @@ public class OptWnd extends WindowX {
 	panel.add(new CFGBox("Simple crops", CFG.SIMPLE_CROPS, "Requires area reload"), x, y);
 	
 	y += STEP;
-	panel.add(new CFGBox("Always show kin names", CFG.DISPLAY_KINNAMES), x, y);
+	panel.add(new CFGBox("Don't hide trees that are visible on radar", CFG.SKIP_HIDING_RADAR_TREES), x, y);
+	
+	y += STEP;
+	panel.add(new CFGBox("Disable transition between tiles", CFG.NO_TILE_TRANSITION), x, y);
+    
+	y += STEP;
+	panel.add(new CFGBox("Make terrain flat", CFG.FLAT_TERRAIN, null, true), x, y);
+	
+	y += STEP;
+	panel.add(new CFGBox("Colorize ridge tiles", CFG.DISPLAY_RIDGE_BOX, "Makes it easier to properly approach ridge for climbing"), x, y);
+	
+	y += STEP;
+	panel.add(new CFGBox("Darken deep ocean tiles", CFG.COLORIZE_DEEP_WATER), x, y);
+//	this does nothing right now
+//	y += STEP;
+//	panel.add(new CFGBox("Always show kin names", CFG.DISPLAY_KINNAMES), x, y);
 	
 	y += STEP;
 	panel.add(new CFGBox("Play sound when kin changes status", CFG.DISPLAY_KINSFX), x, y);
@@ -1066,14 +1126,25 @@ public class OptWnd extends WindowX {
 	panel.add(new CFGBox("Show task status messages", CFG.SHOW_BOT_MESSAGES, "Will log task (like auto-pickup or auto-drink) status to system log"), x, y);
 
 	y += STEP;
-	panel.add(new CFGBox("Show object info", CFG.DISPLAY_GOB_INFO, "Enables damage and crop/tree growth stage displaying", true), x, y);
+	tx = panel.add(new CFGBox("Show object info", CFG.DISPLAY_GOB_INFO, "Enables damage and crop/tree growth stage displaying", true), x, y).sz.x;
+	panel.add(new IButton("gfx/hud/opt", "", "-d", "-h") {
+	    @Override
+	    public void click() {
+		if(ui.gui != null) {
+		    GobInfoOpts.toggle(ui.gui);
+		} else {
+		    GobInfoOpts.toggle(ui.root);
+		}
+	    }
+	    
+	}, x + tx + UI.scale(10), y + UI.scale(1)).settip("Configure types of info that is shown");
     
-	y += STEP;
-	panel.add(new CFGBox("Flat cupboards (needs restart)", CFG.FLAT_CUPBOARDS, "Makes cupboards look like floor hatches", true), x, y);
-
 	y += STEP;
 	panel.add(new CFGBox("Display container fullness", CFG.SHOW_CONTAINER_FULLNESS, "Makes containers tint different colors when they are empty or full", true), x, y);
-    
+	
+	y += STEP;
+	panel.add(new CFGBox("Highlight finished objects", CFG.SHOW_PROGRESS_COLOR, "Highlights drying racks and tanning tubs green when they have only finished products inside", true), x, y);
+	
 	y += STEP;
 	tx = panel.add(new CFGBox("Draw paths", CFG.DISPLAY_GOB_PATHS, "Draws lines where objects are moving", true), x, y).sz.x;
 	panel.add(new IButton("gfx/hud/opt", "", "-d", "-h") {
@@ -1089,6 +1160,9 @@ public class OptWnd extends WindowX {
 	
 	y += 35;
 	panel.add(new CFGBox("Show object radius", CFG.SHOW_GOB_RADIUS, "Shows radius of mine supports, beehives etc.", true), x, y);
+	
+	y += STEP;
+	panel.add(new CFGBox("Show mine support radius as overlay", CFG.SHOW_MINE_SUPPORT_AS_OVERLAY, "Will highlight tiles covered by mine supports, instead of drawing radius around supports."), x, y);
 
 	y += STEP;
 	panel.add(new Button(UI.scale(150), "Show as buffs", false) {
@@ -1103,10 +1177,53 @@ public class OptWnd extends WindowX {
 	}, x, y);
  
 	my = Math.max(my, y);
+	
+	x += UI.scale(250);
+	y = START;
 
+	y = addSlider(CFG.DISPLAY_SCALE_CUPBOARDS, 15, 100, "Cupboard scale: %d%%", "Scale cupboard vertically, changes are applied on open/close of cupboard or zone reload.", panel, x, y, STEP);
+
+	y += STEP;
+	y = addSlider(CFG.DISPLAY_SCALE_WALLS, 15, 100, "Wall scale: %d%%", "Scale palisade and brick wall vertically, changes are applied on zone reload.", panel, x, y, STEP);
+	
+	y += STEP;
+	panel.add(new CFGBox("Cupboard use default materials", CFG.DISPLAY_NO_MAT_CUPBOARDS, "All cupboards will have default look", true), x, y);
+	
+	y += STEP;
+	panel.add(new CFGBox("Cupboard decals on top", CFG.DISPLAY_DECALS_ON_TOP, "Show decals put on cupboard on its top instead of a door. (Requires zone reload or re-applying decal)", true), x, y);
+	
+	y += STEP;
+	
+	y += STEP;
+	panel.add(new Label("Show clickable auras:"), x, y);
+	
+	y += STEP;
+	tx = panel.add(new CFGColorBtn(CFG.COLOR_GOB_SPEED_BUFF, true), x + H_STEP, y).sz.x + H_STEP;
+	panel.add(new CFGBox("Speed Buff", CFG.DISPLAY_AURA_SPEED_BUFF), x + tx + H_STEP, y);
+	
+	y += STEP;
+	tx = panel.add(new CFGColorBtn(CFG.COLOR_GOB_RABBIT, true), x + H_STEP, y).sz.x + H_STEP;
+	panel.add(new CFGBox("Rabbits", CFG.DISPLAY_AURA_RABBIT), x + tx + H_STEP, y);
+	
+	y += STEP;
+	tx = panel.add(new CFGColorBtn(CFG.COLOR_GOB_CRITTERS, true), x + H_STEP, y).sz.x + H_STEP;
+	panel.add(new CFGBox("Critters", CFG.DISPLAY_AURA_CRITTERS), x + tx + H_STEP, y);
+    
+	my = Math.max(my, y);
+	
 	panel.add(new PButton(UI.scale(200), "Back", 27, main), new Coord(0, my + UI.scale(35)));
 	panel.pack();
 	title.c.x = (panel.sz.x - title.sz.x) / 2;
+    }
+
+    private int addSlider(CFG<Integer> cfg, int min, int max, String format, String tip, Panel panel, int x, int y, int STEP) {
+	final Label label = panel.add(new Label(""), x, y);
+	label.settip(tip);
+	
+	y += STEP;
+	panel.add(new CFGSlider(UI.scale(200), min, max, cfg, label, format), x, y).settip(tip);
+	
+	return y;
     }
     
     private void initUIPanel(Panel panel) {
@@ -1147,7 +1264,16 @@ public class OptWnd extends WindowX {
     
 	y += STEP;
 	panel.add(new CFGBox("Always show UI on start", CFG.DISABLE_UI_HIDING), x, y);
-    
+
+	y += STEP;
+	panel.add(new CFGBox("Enable container window spreading", CFG.UI_DISABLE_CONTAINER_POS, "If enabled container windows would be auto positioned next to other, if enabled then they will stack in same position."), x, y);
+
+	y += STEP;
+	panel.add(new CFGBox("Show hands and belt widget", CFG.UI_SHOW_EQPROXY_HAND, "Small draggable widget for quick access to hands and belt slots"), x, y);
+
+	y += STEP;
+	panel.add(new CFGBox("Show pouches and back widget", CFG.UI_SHOW_EQPROXY_POUCH, "Small draggable widget for quick access to pouches and back slots"), x, y);
+
 	y += STEP;
 	panel.add(new CFGBox("Show F-key tool bar", CFG.SHOW_TOOLBELT_0), x, y);
     
@@ -1159,13 +1285,7 @@ public class OptWnd extends WindowX {
 	    @Override
 	    public void set(boolean a) {
 		super.set(a);
-		if(ui.gui != null && ui.gui.chrwdg != null) {
-		    if(a) {
-			ui.gui.addcmeter(new FEPMeter(ui.gui.chrwdg.feps));
-		    } else {
-			ui.gui.delcmeter(FEPMeter.class);
-		    }
-		}
+		if(a) {FEPMeter.add(ui);} else {FEPMeter.rem(ui);}
 	    }
 	}, x, y);
     
@@ -1174,21 +1294,27 @@ public class OptWnd extends WindowX {
 	    @Override
 	    public void set(boolean a) {
 		super.set(a);
-		if(ui.gui != null && ui.gui.chrwdg != null) {
-		    if(a) {
-			ui.gui.addcmeter(new HungerMeter(ui.gui.chrwdg.glut));
-		    } else {
-			ui.gui.delcmeter(HungerMeter.class);
-		    }
-		}
+		if(a) {HungerMeter.add(ui);} else {HungerMeter.rem(ui);}
+	    }
+	}, x, y);
+
+	y += STEP;
+	panel.add(new CFGBox("Show drinks meter", CFG.DRINKS_METER, "Will show how much tea and water you have") {
+	    @Override
+	    public void set(boolean a) {
+		super.set(a);
+		if(a) {DrinkMeter.add(ui);} else {DrinkMeter.rem(ui);}
 	    }
 	}, x, y);
 	
 	y += STEP;
 	panel.add(new CFGBox("Show timestamps in chat messages", CFG.SHOW_CHAT_TIMESTAMP), new Coord(x, y));
-    
+
 	y += STEP;
-	panel.add(new CFGBox("Show food categories", CFG.DISPLAY_FOD_CATEGORIES, "Shows list of food categories in the tooltip", true), x, y);
+	panel.add(new CFGBox("Instant full tooltips", CFG.UI_INSTANT_LONG_TIPS, "Items will show full tooltip immediately", true), x, y);
+
+	y += STEP;
+	panel.add(new CFGBox("Show food categories", CFG.DISPLAY_FOOD_CATEGORIES, "Shows list of food categories in the tooltip", true), x, y);
     
 	y += STEP;
 	panel.add(new CFGBox("Show biomes on minimap", CFG.MMAP_SHOW_BIOMES), x, y);
@@ -1198,9 +1324,14 @@ public class OptWnd extends WindowX {
     
 	y += 2*STEP;
 	panel.add(new CFGBox("Require SHIFT to show stack inventory", CFG.UI_STACK_SUB_INV_ON_SHIFT, "Show stack hover-inventories only if SHIFT is pressed"), x, y);
-    
+	
 	y += STEP;
-	panel.add(new CFGBox("Unpack stacks in extra inventory", CFG.UI_STACK_EXT_INV_UNPACK, "Show stacked items 'unpacked' in extra inventory's list"), x, y);
+	Label label = panel.add(new Label(String.format("Minimum rows in list inventory: %d", CFG.UI_EXT_INV_MIN_ROWS.get())), x, y);
+	y += UI.scale(15);
+	panel.add(new CFGSlider(UI.scale(150), 3, 15, CFG.UI_EXT_INV_MIN_ROWS, label, "Minimum rows in list inventory: %d"), x, y);
+	
+	y += STEP;
+	panel.add(new CFGBox("Unpack stacks in list inventory", CFG.UI_STACK_EXT_INV_UNPACK, "Show stacked items 'unpacked' in extra inventory's list"), x, y);
     
 	//second row
 	my = Math.max(my, y);
@@ -1231,10 +1362,37 @@ public class OptWnd extends WindowX {
     
 	y += STEP;
 	panel.add(new CFGBox("Show item wear bar", CFG.SHOW_ITEM_WEAR_BAR), new Coord(x, y));
+	
+	y += STEP;
+	panel.add(new CFGBox("Highlight broken items", CFG.HIGHLIGHT_BROKEN_ITEMS, "Broken items will have red border"), new Coord(x, y));
     
 	y += STEP;
 	panel.add(new CFGBox("Show item armor", CFG.SHOW_ITEM_ARMOR), new Coord(x, y));
 	
+	y += STEP;
+	panel.add(new CFGBox("Improve weapon damage tooltip", CFG.IMPROVE_DAMAGE_TIP, "Make damage tooltip show base damage and damage based on its quality and your strength"), new Coord(x, y));
+	
+	y += STEP;
+	panel.add(new Label("Stats widget:"), x, y);
+
+	y += STEP;
+	panel.add(new CFGBox("Show time", CFG.SHOW_TIME), x, y);
+
+	y += STEP;
+	panel.add(new CFGBox("Show stats (ping, players number)", CFG.SHOW_STATS), x, y);
+
+	y += STEP;
+	panel.add(new CFGBox("Always show time for dewy lady's mantle", CFG.ALWAYS_SHOW_DEWY_TIME), x, y);
+
+	y += STEP;
+	panel.add(new Label("Quest markers:"), x, y);
+
+	y += STEP;
+	panel.add(new CFGBox("Highlight QuestGivers on map", CFG.QUESTHELPER_HIGHLIGHT_QUESTGIVERS, null, true), x, y);
+
+	y += STEP;
+	panel.add(new CFGBox("Show QuestGiver tasks in tooltip on map ", CFG.QUESTHELPER_SHOW_TASKS_IN_TOOLTIP), x, y);
+
 	my = Math.max(my, y);
     
 	panel.add(new PButton(UI.scale(200), "Back", 27, main), new Coord(0, my + UI.scale(35)));
@@ -1242,53 +1400,7 @@ public class OptWnd extends WindowX {
 	title.c.x = (panel.sz.x - title.sz.x) / 2;
     }
     
-    private void initCombatPanel(Panel panel) {
-	int STEP = UI.scale(25);
-	int START;
-	int x, y;
-	int my = 0, tx;
     
-	Widget title = panel.add(new Label("Combat settings", LBL_FNT), 0, 0);
-	START = title.sz.y + UI.scale(10);
-    
-	x = 0;
-	y = START;
-	//first row
-	panel.add(new CFGBox("Use new combat UI", CFG.ALT_COMBAT_UI), x, y);
-    
-	y += STEP;
-	panel.add(new CFGBox("Always mark current target", CFG.ALWAYS_MARK_COMBAT_TARGET , "Usually current target only marked when there's more than one"), x, y);
-    
-	y += STEP;
-	panel.add(new CFGBox("Auto peace on combat start", CFG.COMBAT_AUTO_PEACE , "Automatically enter peaceful mode on combat start id enemy is aggressive - useful for taming"), x, y);
-    
-	y += STEP;
-	panel.add(new CFGBox("Show combat damage", CFG.SHOW_COMBAT_DMG), x, y);
-    
-	y += STEP;
-	panel.add(new CFGBox("Clear player damage after combat", CFG.CLEAR_PLAYER_DMG_AFTER_COMBAT), x, y);
-    
-	y += STEP;
-	panel.add(new CFGBox("Clear all damage after combat", CFG.CLEAR_ALL_DMG_AFTER_COMBAT), x, y);
-    
-	y += STEP;
-	panel.add(new CFGBox("Simplified combat openings", CFG.SIMPLE_COMBAT_OPENINGS, "Show openings as solid colors with numbers"), x, y);
-    
-	y += STEP;
-	panel.add(new CFGBox("Display combat keys", CFG.SHOW_COMBAT_KEYS), x, y);
-	
-	//second row
-	my = Math.max(my, y);
-	x += UI.scale(265);
-	y = START;
-	
-	
-	my = Math.max(my, y);
-    
-	panel.add(new PButton(UI.scale(200), "Back", 27, main), new Coord(0, my + UI.scale(35)));
-	panel.pack();
-	title.c.x = (panel.sz.x - title.sz.x) / 2;
-    }
 
     private void populateShortcutsPanel(KeyBinder.KeyBindType type) {
         shortcutList.clear(true);
@@ -1298,8 +1410,8 @@ public class OptWnd extends WindowX {
     
     private void initShortcutsPanel() {
 	TabStrip<KeyBinder.KeyBindType> tabs = new TabStrip<>(this::populateShortcutsPanel);
-	tabs.insert(0, null, "General", null).tag = KeyBinder.KeyBindType.GENERAL;
-	tabs.insert(1, null, "Combat", null).tag = KeyBinder.KeyBindType.COMBAT;
+	tabs.insert(KeyBinder.KeyBindType.GENERAL, null, "General", null);
+	tabs.insert(KeyBinder.KeyBindType.COMBAT, null, "Combat", null);
 	shortcuts.add(tabs);
 	int y = tabs.sz.y;
 	
@@ -1410,97 +1522,4 @@ public class OptWnd extends WindowX {
 	chpanel(main);
 	super.show();
     }
-
-    public static class CFGBox extends CheckBox implements CFG.Observer<Boolean> {
-
-	protected final CFG<Boolean> cfg;
-
-	public CFGBox(String lbl, CFG<Boolean> cfg) {
-	    this(lbl, cfg, null, false);
-	}
-
-	public CFGBox(String lbl, CFG<Boolean> cfg, String tip) {
-	    this(lbl, cfg, tip, false);
-	}
-
-	public CFGBox(String lbl, CFG<Boolean> cfg, String tip, boolean observe) {
-	    super(lbl);
-	    set = null;
-	    this.cfg = cfg;
-	    defval();
-	    if(tip != null) {
-		tooltip = Text.render(tip).tex();
-	    }
-	    if(observe){ cfg.observe(this); }
-	}
-
-	protected void defval() {
-	    a = cfg.get();
-	}
-
-	@Override
-	public void set(boolean a) {
-	    this.a = a;
-	    cfg.set(a);
-	    if(set != null) {set.accept(a);}
-	}
-
-	@Override
-	public void destroy() {
-	    cfg.unobserve(this);
-	    super.destroy();
-	}
-
-	@Override
-	public void updated(CFG<Boolean> cfg) {
-	    a = cfg.get();
-	}
-    }
-    
-    public static class CFGHSlider extends HSlider {
-	private final CFG<Integer> cfg;
-	
-	public CFGHSlider(int w, CFG<Integer> cfg, int min, int max) {
-	    super(w, min, max, cfg.get());
-	    this.cfg = cfg;
-	}
-	
-	@Override
-	public void released() {
-	    cfg.set(val);
-	}
-    }
-
-    public class QualityBox extends Dropbox<QualityList.SingleType> {
-	protected final CFG<QualityList.SingleType> cfg;
-
-	public QualityBox(int w, int listh, int itemh, CFG<QualityList.SingleType> cfg) {
-	    super(w, listh, itemh);
-	    this.cfg = cfg;
-	    this.sel = cfg.get();
-	}
-
-	@Override
-	protected QualityList.SingleType listitem(int i) {
-	    return QualityList.SingleType.values()[i];
-	}
-
-	@Override
-	protected int listitems() {
-	    return QualityList.SingleType.values().length;
-	}
-
-	@Override
-	protected void drawitem(GOut g, QualityList.SingleType item, int i) {
-	    g.image(item.tex(), Q_TYPE_PADDING);
-	}
-
-	@Override
-	public void change(QualityList.SingleType item) {
-	    super.change(item);
-	    if(item != null) {
-		cfg.set(item);
-	    }
-	}
-    };
 }

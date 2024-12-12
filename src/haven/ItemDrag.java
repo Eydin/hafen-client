@@ -46,68 +46,28 @@ public class ItemDrag extends WItem {
 	g.chcolor();
     }
 
-    public boolean dropon(Widget w, Coord c) {
-	if(w instanceof DTarget) {
-	    if(((DTarget)w).drop(c, c.add(doff.inv())))
-		return(true);
-	}
-	if(w instanceof DTarget2) {
-	    if(((DTarget2)w).drop(this, c, c.add(doff.inv())))
-		return(true);
-	}
-	for(Widget wdg = w.lchild; wdg != null; wdg = wdg.prev) {
-	    if((wdg == this) || !wdg.visible)
-		continue;
-	    Coord cc = w.xlate(wdg.c, true);
-	    if(c.isect(cc, wdg.sz)) {
-		if(dropon(wdg, c.add(cc.inv())))
-		    return(true);
-	    }
-	}
-	return(false);
-    }
-	
-    public boolean interact(Widget w, Coord c) {
-	if(w instanceof DTarget) {
-	    if(((DTarget)w).iteminteract(c, c.add(doff.inv())))
-		return(true);
-	}
-	if(w instanceof DTarget2) {
-	    if(((DTarget2)w).iteminteract(this, c, c.add(doff.inv())))
-		return(true);
-	}
-	for(Widget wdg = w.lchild; wdg != null; wdg = wdg.prev) {
-	    if((wdg == this) || !wdg.visible)
-		continue;
-	    Coord cc = w.xlate(wdg.c, true);
-	    if(c.isect(cc, wdg.sz)) {
-		if(interact(wdg, c.add(cc.inv())))
-		    return(true);
-	    }
-	}
-	return(false);
-    }
-	
-    public boolean mousedown(Coord c, int button) {
-	if(ui.modctrl && !ui.modshift && !ui.modmeta && !CFG.ITEM_DROP_PROTECTION.get()) {
+    public boolean mousedown(MouseDownEvent ev) {
+	if(!ev.grabbed)
+	    return(false);
+	if(!CFG.ITEM_DROP_PROTECTION.get() && ui.modctrl && !ui.modshift && !ui.modmeta) {
 	    /* XXX */
 	    GameUI gui = getparent(GameUI.class);
 	    if((gui != null) && (gui.map != null)) {
 		ui.modctrl = false;
-		return(gui.map.mousedown(gui.map.rootxlate(c.add(rootpos())), button));
+		return(ev.derive(gui.map.rootxlate(ev.c.add(rootpos()))).dispatch(gui.map));
 	    }
 	}
-	if(button == 1) {
-	    dropon(parent, c.add(this.c));
-	    return(true);
-	} else if(button == 3) {
-	    interact(parent, c.add(this.c));
-	    return(true);
+	if(ev.b == 1) {
+	    if(ui.dispatchq(parent, new DTarget.Drop(ev.c.add(this.c), this)).handled)
+		return(true);
+	} else if(ev.b == 3) {
+	    if(ui.dispatchq(parent, new DTarget.Interact(ev.c.add(this.c), this)).handled)
+		return(true);
 	}
 	return(false);
     }
 
-    public void mousemove(Coord c) {
-	this.c = this.c.add(c.add(doff.inv()));
+    public void mousemove(MouseMoveEvent ev) {
+	this.c = this.c.add(ev.c.sub(doff));
     }
 }

@@ -36,10 +36,10 @@ public class ICheckBox extends ACheckBox {
     @RName("ichk")
     public static class $_ implements Factory {
 	public Widget create(UI ui, Object[] args) {
-	    Tex up = Loading.waitfor(ui.sess.getres((Integer)args[0])).flayer(Resource.imgc).tex();
-	    Tex down = Loading.waitfor(ui.sess.getres((Integer)args[1])).flayer(Resource.imgc).tex();
-	    Tex hoverup = (args.length > 2) ? Loading.waitfor(ui.sess.getres((Integer)args[1])).flayer(Resource.imgc).tex() : up;
-	    Tex hoverdown = (args.length > 3) ? Loading.waitfor(ui.sess.getres((Integer)args[1])).flayer(Resource.imgc).tex() : down;
+	    Tex up = Loading.waitfor(ui.sess.getresv(args[0])).flayer(Resource.imgc).tex();
+	    Tex down = Loading.waitfor(ui.sess.getresv(args[1])).flayer(Resource.imgc).tex();
+	    Tex hoverup = (args.length > 2) ? Loading.waitfor(ui.sess.getresv(args[1])).flayer(Resource.imgc).tex() : up;
+	    Tex hoverdown = (args.length > 3) ? Loading.waitfor(ui.sess.getresv(args[1])).flayer(Resource.imgc).tex() : down;
 	    ICheckBox ret = new ICheckBox(up, down, hoverup, hoverdown);
 	    ret.canactivate = true;
 	    return(ret);
@@ -115,24 +115,18 @@ public class ICheckBox extends ACheckBox {
 	return(img.getRaster().getSample(c.x, c.y, 3) >= 128);
     }
 
-    public boolean mousedown(Coord c, int button) {
-	if((button == 1) && checkhit(c)) {
+    public boolean mousedown(MouseDownEvent ev) {
+	if((ev.b == 1) && checkhit(ev.c)) {
 	    click();
 	    return(true);
-	} else if((button == 3) && checkhit(c)) {
+	} else if((ev.b == 3) && checkhit(ev.c)) {
 	    rclick();
 	    return true;
 	}
-	return(super.mousedown(c, button));
+	return(super.mousedown(ev));
     }
 
-    public void mousemove(Coord c) {
-	this.h = checkhit(c);
-    }
-
-    public Object tooltip(Coord c, Widget prev) {
-	if(!checkhit(c))
-	    return(null);
-	return(super.tooltip(c, prev));
+    public void mousemove(MouseMoveEvent ev) {
+	this.h = checkhit(ev.c);
     }
 }

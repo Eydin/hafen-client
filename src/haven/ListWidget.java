@@ -32,16 +32,16 @@ public abstract class ListWidget<T> extends Widget {
     public final int itemh;
     public T sel;
     public int selindex;
-
+    
     public ListWidget(Coord sz, int itemh) {
 	super(sz);
 	this.itemh = itemh;
     }
-
+    
     protected abstract T listitem(int i);
     protected abstract int listitems();
     protected abstract void drawitem(GOut g, T item, int i);
-
+    
     public int find(T item) {
 	for(int i = 0; i < listitems(); i++) {
 	    if(listitem(i) == item)
@@ -49,27 +49,31 @@ public abstract class ListWidget<T> extends Widget {
 	}
 	return(-1);
     }
-
+    
     public void change(T item) {
-        selindex = indexof(item);
-        sel = (selindex != -1) ? item : null;
+	selindex = indexof(item);
+	sel = (selindex != -1) ? item : null;
+	changed(sel, selindex);
     }
-
+    
     public void change(int index) {
-        int count = listitems();
-        if (index >= 0 && index < count) {
-            selindex = index;
-            sel = listitem(index);
-        } else {
-            selindex = -1;
-            sel = null;
-        }
+	int count = listitems();
+	if (index >= 0 && index < count) {
+	    selindex = index;
+	    sel = listitem(index);
+	} else {
+	    selindex = -1;
+	    sel = null;
+	}
+	changed(sel, selindex);
     }
 
+    public void changed(T item, int index) {}
+    
     public int indexof(T item) {
-        for (int i = 0; i < listitems(); i++)
-            if (Objects.equals(listitem(i), item))
-                return i;
-        return -1;
+	for (int i = 0; i < listitems(); i++)
+	    if (Objects.equals(listitem(i), item))
+		return i;
+	return -1;
     }
 }

@@ -27,14 +27,13 @@
 package haven.resutil;
 
 import haven.*;
+import me.ender.ClientUtils;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.util.*;
 import java.util.List;
 
-import static haven.CharWnd.Constipations.*;
-import static haven.PUtils.*;
 import static haven.QualityList.SingleType.*;
 
 public class FoodInfo extends ItemInfo.Tip {
@@ -42,7 +41,6 @@ public class FoodInfo extends ItemInfo.Tip {
     public final Event[] evs;
     public final Effect[] efs;
     public final int[] types;
-    private final CharacterInfo.Constipation constipation;
     
     public FoodInfo(Owner owner, double end, double glut, double cons, Event[] evs, Effect[] efs, int[] types) {
 	super(owner);
@@ -52,17 +50,7 @@ public class FoodInfo extends ItemInfo.Tip {
 	this.evs = evs;
 	this.efs = efs;
 	this.types = types;
-	
-	CharacterInfo.Constipation constipation = null;
-	try {
-	    constipation = owner.context(Session.class).character.constipation;
-	    if(!constipation.hasRenderer(FoodInfo.class)) {
-		constipation.addRenderer(FoodInfo.class, FoodInfo::renderConstipation);
-	    }
-	} catch (NullPointerException | OwnerContext.NoContext ignore) {}
-	this.constipation = constipation;
     }
-    
     
     public FoodInfo(Owner owner, double end, double glut, Event[] evs, Effect[] efs, int[] types) {
 	this(owner, end, glut, 0, evs, efs, types);
@@ -70,13 +58,13 @@ public class FoodInfo extends ItemInfo.Tip {
     
     public static class Event {
 	public static final Coord imgsz = new Coord(Text.std.height(), Text.std.height());
-	public final CharWnd.FoodMeter.Event ev;
+	public final BAttrWnd.FoodMeter.Event ev;
 	public final BufferedImage img;
 	public final double a;
 	private final String res;
 	
 	public Event(Resource res, double a) {
-	    this.ev = res.flayer(CharWnd.FoodMeter.Event.class);
+	    this.ev = res.flayer(BAttrWnd.FoodMeter.Event.class);
 	    this.img = PUtils.convolve(res.flayer(Resource.imgc).img, imgsz, CharWnd.iconfilter);
 	    this.a = a;
 	    this.res = res.name;
@@ -91,8 +79,12 @@ public class FoodInfo extends ItemInfo.Tip {
     }
     
     public BufferedImage tipimg() {
+	String energy_hunger = glut != 0 
+	    ? Utils.odformat2(end / (10 * glut), 2)
+	    : end == 0 ? "0" : "∞";
+	
 	String head = String.format("Energy: $col[128,128,255]{%s%%}, Hunger: $col[255,192,128]{%s\u2030}, Energy/Hunger: $col[128,128,255]{%s%%}",
-	    Utils.odformat2(end * 100, 2), Utils.odformat2(glut * 1000, 2), Utils.odformat2(end / (10 * glut), 2));
+	    Utils.odformat2(end * 100, 2), Utils.odformat2(glut * 1000, 2), energy_hunger);
 	if(cons != 0)
 	    head += String.format(", Satiation: $col[192,192,128]{%s%%}", Utils.odformat2(cons * 1000, 2));
 	BufferedImage base = RichText.render(head, 0).img;
@@ -114,36 +106,9 @@ public class FoodInfo extends ItemInfo.Tip {
 		efi = catimgsh(5, efi, RichText.render(String.format("$i{($col[192,192,255]{%d%%} chance)}", (int)Math.round(efs[i].p * 100)), 0).img);
 	    imgs.add(efi);
 	}
-	if(CFG.DISPLAY_FOD_CATEGORIES.get() && types.length > 0 && constipation != null) {
-	    imgs.add(Text.render("Categories:").img);
-	    double effective = 1;
-	    for (int type : types) {
-		CharacterInfo.Constipation.Data c = constipation.get(type);
-		if(c!=null) {
-		    imgs.add(constipation.render(FoodInfo.class, c));
-		    effective = Math.min(effective, c.value);
-		}
-	    }
-	    Color col = color(effective);
-	    imgs.add(RichText.render(String.format("Effective: $col[%d,%d,%d]{%s%%}", col.getRed(), col.getGreen(), col.getBlue(), Utils.odformat2(100 * effective, 2)), 0).img);
-	}
-	imgs.add(RichText.render(String.format("FEP Sum: $col[128,255,0]{%s}, FEP/Hunger: $col[128,255,0]{%s}", Utils.odformat2(fepSum, 2), Utils.odformat2(fepSum / (100 * glut), 2)), 0).img);
-	return(catimgs(0, imgs.toArray(new BufferedImage[0])));
-    }
-    
-    private static BufferedImage renderConstipation(CharacterInfo.Constipation.Data data) {
-	int h = 14;
-	BufferedImage img = data.res.get().layer(Resource.imgc).img;
-	String nm = data.res.get().layer(Resource.tooltip).t;
-	Color col = color(data.value);
-	Text rnm = RichText.render(String.format("%s: $col[%d,%d,%d]{%s%%}", nm, col.getRed(), col.getGreen(), col.getBlue(), Utils.odformat2(100 * data.value, 2)), 0);
-	BufferedImage tip = TexI.mkbuf(new Coord(h + 5 + rnm.sz().x, h));
-	Graphics g = tip.getGraphics();
-	g.drawImage(convolvedown(img, new Coord(h, h), tflt), 0, 0, null);
-	g.drawImage(rnm.img, h + 5, ((h - rnm.sz().y) / 2) + 1, null);
-	g.dispose();
 	
-	return tip;
+	ItemData.modifyFoodTooltip(owner, imgs, types, glut, fepSum);
+	return(catimgs(0, imgs.toArray(new BufferedImage[0])));
     }
     
     public static class Data implements ItemData.ITipData {
@@ -162,7 +127,7 @@ public class FoodInfo extends ItemInfo.Tip {
 	    double multiplier = single.multiplier;
 	    fep = new ArrayList<>(info.evs.length);
 	    for (int i = 0; i < info.evs.length; i++) {
-		fep.add(new Pair<>(info.evs[i].res, Utils.round(info.evs[i].a / multiplier, 2)));
+		fep.add(new Pair<>(info.evs[i].res, ClientUtils.round(info.evs[i].a / multiplier, 2)));
 	    }
 	    types  = info.types;
 	}
